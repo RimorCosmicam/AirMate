@@ -26,9 +26,12 @@ jobs:
       - name: Package test app
         run: |
           mkdir -p dist/AirMate.app/Contents/MacOS
-          cp .build/debug/AirMateMac dist/AirMate.app/Contents/MacOS/AirMateMac
+          cp .build/debug/AirMateMac dist/AirMate.app/Contents/MacOS/AirMate
           cp Resources/Info.plist dist/AirMate.app/Contents/Info.plist
           codesign --force --deep --sign - dist/AirMate.app
+          codesign --verify --deep --strict dist/AirMate.app
+          test -x dist/AirMate.app/Contents/MacOS/AirMate
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' dist/AirMate.app/Contents/Info.plist)" = "AirMate"
           ditto -c -k --sequesterRsrc --keepParent dist/AirMate.app dist/AirMate-macOS-arm64.zip
       - uses: actions/upload-artifact@v4
         with:

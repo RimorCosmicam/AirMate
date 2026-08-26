@@ -12,11 +12,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.connected.to.line.below", accessibilityDescription: "AirMate")
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.title = " AirMate"
+            button.toolTip = "AirMate wireless display"
+            if let icon = NSImage(systemSymbolName: "rectangle.connected.to.line.below", accessibilityDescription: "AirMate") {
+                icon.isTemplate = true
+                button.image = icon
+                button.imagePosition = .imageLeading
+            }
+        }
         rebuildMenu()
         diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuildMenu() }
+        // An app launched from Finder must always acknowledge the launch visibly.
+        // Closing this window returns AirMate to menu-bar-only accessory mode.
+        DispatchQueue.main.async { [weak self] in self?.openWindow() }
     }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     private func rebuildMenu() {
         let menu = NSMenu()
@@ -84,4 +97,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func quit() { stopDisplay(); NSApp.terminate(nil) }
 }
-
