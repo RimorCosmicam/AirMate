@@ -27,3 +27,11 @@ The first milestone intentionally does not claim production security: the discov
 ## Builds
 
 Builds run on GitHub Actions. The workflow uses a GitHub-hosted macOS toolchain for the Swift package and an Ubuntu runner for Android. No checked-in secrets or signing identities are required for debug compilation.
+
+Each successful workflow publishes two test artifacts: `AirMate-macOS-arm64.zip` containing an ad-hoc-signed `.app` for Apple Silicon, and `app-debug.apk` for Android. Tagged prereleases copy these into the GitHub Releases page for straightforward installation.
+
+## Installing test builds
+
+On macOS, unzip the archive, move `AirMate.app` into Applications, then Control-click it and choose **Open** the first time. Approve any Screen Recording permission macOS requests. This development build is ad-hoc signed, not notarized.
+
+On Android, download `app-debug.apk`, allow installation from the browser or file manager when prompted, and install it. The current vertical slice uses a UDP LAN bootstrap rather than production pairing, so both devices must be on the same isolated/trusted Wi-Fi network.

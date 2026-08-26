@@ -23,6 +23,17 @@ jobs:
         run: swift build -c debug
       - name: Tests
         run: swift test
+      - name: Package test app
+        run: |
+          mkdir -p dist/AirMate.app/Contents/MacOS
+          cp .build/debug/AirMateMac dist/AirMate.app/Contents/MacOS/AirMateMac
+          cp Resources/Info.plist dist/AirMate.app/Contents/Info.plist
+          codesign --force --deep --sign - dist/AirMate.app
+          ditto -c -k --sequesterRsrc --keepParent dist/AirMate.app dist/AirMate-macOS-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: airmate-macos-arm64
+          path: mac/dist/AirMate-macOS-arm64.zip
 
   android:
     runs-on: ubuntu-24.04
@@ -44,4 +55,3 @@ jobs:
         with:
           name: airmate-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
