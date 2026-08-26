@@ -89,10 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func refreshUI() {
         rebuildMenu()
-        (window?.contentViewController as? MainViewController)?.update(
-            displayRunning: display != nil,
-            snapshot: Diagnostics.shared.snapshot()
-        )
+        (window?.contentViewController as? MainViewController)?.update(displayRunning: display != nil)
     }
 
     @objc private func openWindow() {
@@ -102,14 +99,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 guard let self else { return }
                 if self.display == nil { self.startDisplay() } else { self.stopDisplay() }
             }
-            viewController.update(displayRunning: display != nil, snapshot: Diagnostics.shared.snapshot())
+            viewController.update(displayRunning: display != nil)
             let created = NSWindow(contentViewController: viewController)
             created.title = "AirMate"
+            created.titleVisibility = .hidden
             created.delegate = self
-            created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            created.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             created.titlebarAppearsTransparent = true
-            created.setContentSize(NSSize(width: 520, height: 230))
-            created.minSize = NSSize(width: 500, height: 220)
+            created.backgroundColor = .clear
+            created.isOpaque = false
+            created.setContentSize(NSSize(width: 440, height: 130))
+            created.minSize = NSSize(width: 420, height: 120)
             created.center()
             created.isReleasedWhenClosed = false
             window = created
