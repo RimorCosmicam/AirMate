@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var diagnosticsTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ApplicationMenu.install(target: self)
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
@@ -33,7 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
         rebuildMenu()
-        diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuildMenu() }
+        diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.refreshUI()
+        }
         // An app launched from Finder must always acknowledge the launch visibly.
         // Closing this window returns AirMate to menu-bar-only accessory mode.
         DispatchQueue.main.async { [weak self] in self?.openWindow() }
@@ -78,19 +81,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem?.menu = menu
     }
 
+    private func refreshUI() {
+        rebuildMenu()
+        (window?.contentViewController as? MainViewController)?.update(
+            displayRunning: display != nil,
+            snapshot: Diagnostics.shared.snapshot()
+        )
+    }
+
     @objc private func openWindow() {
         if window == nil {
-            let viewController = NSViewController()
-            let label = NSTextField(labelWithString: "AirMate\n\nUse Display Settings to arrange AirMate Display.\nThe Android client listens on UDP port 48620.")
-            label.alignment = .center
-            label.translatesAutoresizingMaskIntoConstraints = false
-            viewController.view = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
-            viewController.view.addSubview(label)
-            NSLayoutConstraint.activate([label.centerXAnchor.constraint(equalTo: viewController.view.centerXAnchor), label.centerYAnchor.constraint(equalTo: viewController.view.centerYAnchor)])
+            let viewController = MainViewController()
+            viewController.onToggleDisplay = { [weak self] in
+                guard let self else { return }
+                if self.display == nil { self.startDisplay() } else { self.stopDisplay() }
+            }
+            viewController.update(displayRunning: display != nil, snapshot: Diagnostics.shared.snapshot())
             let created = NSWindow(contentViewController: viewController)
             created.title = "AirMate"
             created.delegate = self
-            created.setContentSize(NSSize(width: 520, height: 260))
+            created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            created.titlebarAppearsTransparent = true
+            created.setContentSize(NSSize(width: 640, height: 430))
+            created.minSize = NSSize(width: 620, height: 410)
+            created.center()
+            created.isReleasedWhenClosed = false
             window = created
         }
         NSApp.setActivationPolicy(.regular)
@@ -116,12 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let alert = NSAlert(error: error); alert.runModal()
             stopDisplay()
         }
-        rebuildMenu()
+        refreshUI()
     }
 
     @objc private func stopDisplay() {
         capture?.stop(); capture = nil; encoder = nil; sender = nil; display?.stop(); display = nil
-        rebuildMenu()
+        refreshUI()
     }
 
     @objc private func quit() { stopDisplay(); NSApp.terminate(nil) }
