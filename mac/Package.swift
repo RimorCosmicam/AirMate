@@ -21,7 +21,7 @@ let package = Package(
                 .linkedFramework("AppKit"), .linkedFramework("CoreGraphics"),
                 .linkedFramework("CoreMedia"), .linkedFramework("CoreVideo"),
                 .linkedFramework("IOSurface"), .linkedFramework("VideoToolbox"),
-                .linkedFramework("Network")
+                .linkedFramework("Network"), .linkedFramework("ScreenCaptureKit")
             ]
         ),
         .testTarget(name: "AirMateMacTests", dependencies: ["AirMateMac"], path: "Tests")

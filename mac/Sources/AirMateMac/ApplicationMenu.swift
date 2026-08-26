@@ -1,5 +1,6 @@
 import AppKit
 
+@MainActor
 enum ApplicationMenu {
     static func install(target: AnyObject) {
         let mainMenu = NSMenu()
@@ -37,4 +38,3 @@ enum ApplicationMenu {
         NSApplication.shared.mainMenu = mainMenu
     }
 }
-

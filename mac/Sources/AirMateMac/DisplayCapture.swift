@@ -1,53 +1,79 @@
 import Foundation
 import CoreGraphics
+import CoreMedia
 import CoreVideo
-import IOSurface
+import ScreenCaptureKit
 
-final class DisplayCapture: @unchecked Sendable {
+final class DisplayCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let queue = DispatchQueue(label: "AirMate.Capture", qos: .userInteractive)
+    private let displayID: CGDirectDisplayID
+    private let width: Int
+    private let height: Int
     private let encoder: LatestFrameEncoder
-    private var stream: CGDisplayStream?
+    private var stream: SCStream?
     private var nextFrameID: UInt64 = 1
 
-    init(displayID: CGDirectDisplayID, width: Int, height: Int, encoder: LatestFrameEncoder) throws {
+    init(displayID: CGDirectDisplayID, width: Int, height: Int, encoder: LatestFrameEncoder) {
+        self.displayID = displayID
+        self.width = width
+        self.height = height
         self.encoder = encoder
-        let properties: [CFString: Any] = [
-            CGDisplayStream.showCursor: true,
-            CGDisplayStream.minimumFrameTime: 1.0 / 60.0,
-            CGDisplayStream.queueDepth: 1
-        ]
-        guard let created = CGDisplayStream(dispatchQueueDisplay: displayID,
-                                            outputWidth: width, outputHeight: height,
-                                            pixelFormat: Int32(kCVPixelFormatType_32BGRA),
-                                            properties: properties as CFDictionary,
-                                            queue: queue,
-                                            handler: { [weak self] status, _, surface, _ in
-                                                guard status == .frameComplete, let surface else { return }
-                                                self?.consume(surface)
-                                            }) else {
-            throw DisplayError.creation("CGDisplayStream creation failed for display \(displayID)")
+        super.init()
+    }
+
+    func start() async throws {
+        let content = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: false
+        )
+        guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
+            throw DisplayError.creation("ScreenCaptureKit could not find AirMate Display \(displayID)")
         }
+
+        let configuration = SCStreamConfiguration()
+        configuration.width = width
+        configuration.height = height
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        configuration.queueDepth = 1
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.showsCursor = true
+        configuration.capturesAudio = false
+
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let created = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try created.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         stream = created
+        try await created.startCapture()
     }
 
-    func start() throws {
-        guard let stream else { return }
-        let result = stream.start()
-        guard result == .success else { throw DisplayError.creation("CGDisplayStream start failed: \(result.rawValue)") }
+    func stop() {
+        guard let active = stream else { return }
+        stream = nil
+        active.stopCapture { error in
+            if let error {
+                Diagnostics.shared.displayLog.error("ScreenCaptureKit stop failed: \(error.localizedDescription)")
+            }
+        }
     }
 
-    func stop() { _ = stream?.stop(); stream = nil }
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .screen,
+              sampleBuffer.isValid,
+              let pixelBuffer = sampleBuffer.imageBuffer else { return }
 
-    private func consume(_ surface: IOSurface) {
-        var unmanagedBuffer: Unmanaged<CVPixelBuffer>?
-        guard CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, nil, &unmanagedBuffer) == kCVReturnSuccess,
-              let unmanagedBuffer else { return }
-        let buffer = unmanagedBuffer.takeRetainedValue()
         let id = nextFrameID
         nextFrameID &+= 1
         let nanos = DispatchTime.now().uptimeNanoseconds
         Diagnostics.shared.mutate { $0.captured += 1 }
-        encoder.submit(CapturedFrame(id: id, captureNanos: nanos, pixelBuffer: buffer))
+        encoder.submit(CapturedFrame(id: id, captureNanos: nanos, pixelBuffer: pixelBuffer))
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        Diagnostics.shared.displayLog.error("ScreenCaptureKit stopped: \(error.localizedDescription)")
     }
 
     deinit { stop() }

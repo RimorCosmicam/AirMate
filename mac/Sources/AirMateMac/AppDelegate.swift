@@ -1,6 +1,7 @@
 import AppKit
 
 @main
+@MainActor
 enum AirMateMain {
     static func main() {
         let application = NSApplication.shared
@@ -11,6 +12,7 @@ enum AirMateMain {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var window: NSWindow?
@@ -123,10 +125,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let sender = try UDPSender()
             let display = try CoreGraphicsVirtualDisplayBackend()
             let encoder = try LatestFrameEncoder(width: 1920, height: 1080, sender: sender)
-            let capture = try DisplayCapture(displayID: display.displayID, width: 1920, height: 1080, encoder: encoder)
-            try capture.start()
+            let capture = DisplayCapture(displayID: display.displayID, width: 1920, height: 1080, encoder: encoder)
             self.sender = sender; self.display = display; self.encoder = encoder; self.capture = capture
-            Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
+            Task { @MainActor [weak self] in
+                do {
+                    try await capture.start()
+                    Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
+                    self?.refreshUI()
+                } catch {
+                    let alert = NSAlert(error: error)
+                    alert.runModal()
+                    self?.stopDisplay()
+                }
+            }
         } catch {
             let alert = NSAlert(error: error); alert.runModal()
             stopDisplay()

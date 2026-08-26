@@ -3,7 +3,7 @@ import CoreMedia
 import CoreVideo
 import VideoToolbox
 
-struct CapturedFrame {
+struct CapturedFrame: @unchecked Sendable {
     let id: UInt64
     let captureNanos: UInt64
     let pixelBuffer: CVPixelBuffer
