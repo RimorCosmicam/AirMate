@@ -17,7 +17,7 @@ AirMate is a native macOS-to-Android extended display prototype. The Mac creates
 
 1. Launch AirMate on the Mac.
 2. Choose **Start Display** from the menu bar. AirMate creates a 1920x1080 virtual display and listens for a client hello on UDP port 48620.
-3. Launch the Android app on the same LAN and tap **Listen**. The client broadcasts a hello and listens for video.
+3. Launch the Android app on the same LAN. It automatically broadcasts a hello and listens for video.
 4. Arrange **AirMate Display** in macOS Display Settings.
 
 Every latency-sensitive boundary is bounded. Capture allows one VideoToolbox submission and one replaceable pending pixel buffer. UDP sends are non-blocking and an access unit is abandoned on backpressure. Android keeps one reusable reassembly slot and discards an incomplete frame when a newer frame appears.
