@@ -36,9 +36,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
         rebuildMenu()
-        diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.refreshUI()
-        }
+        diagnosticsTimer = Timer.scheduledTimer(
+            timeInterval: 1,
+            target: self,
+            selector: #selector(refreshUI),
+            userInfo: nil,
+            repeats: true
+        )
         // An app launched from Finder must always acknowledge the launch visibly.
         // Closing this window returns AirMate to menu-bar-only accessory mode.
         DispatchQueue.main.async { [weak self] in self?.openWindow() }
@@ -83,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem?.menu = menu
     }
 
-    private func refreshUI() {
+    @objc private func refreshUI() {
         rebuildMenu()
         (window?.contentViewController as? MainViewController)?.update(
             displayRunning: display != nil,
