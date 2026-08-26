@@ -34,7 +34,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         setContentView(FrameLayout(this).apply {
             addView(surfaceView, FrameLayout.LayoutParams(-1, -1))
-            addView(overlay, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+            addView(overlay, FrameLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.START })
         })
         overlay.post(updateStats)
     }
@@ -47,4 +47,3 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun surfaceDestroyed(holder: SurfaceHolder) { receiver?.close(); receiver = null; decoder?.close(); decoder = null }
     override fun onDestroy() { overlay.removeCallbacks(updateStats); receiver?.close(); decoder?.close(); super.onDestroy() }
 }
-
