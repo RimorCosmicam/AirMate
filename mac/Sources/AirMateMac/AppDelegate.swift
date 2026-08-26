@@ -1,0 +1,87 @@
+import AppKit
+
+@main
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private var statusItem: NSStatusItem!
+    private var window: NSWindow?
+    private var display: VirtualDisplayBackend?
+    private var capture: DisplayCapture?
+    private var encoder: LatestFrameEncoder?
+    private var sender: UDPSender?
+    private var diagnosticsTimer: Timer?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.connected.to.line.below", accessibilityDescription: "AirMate")
+        rebuildMenu()
+        diagnosticsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.rebuildMenu() }
+    }
+
+    private func rebuildMenu() {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open AirMate", action: #selector(openWindow), keyEquivalent: "o").target = self
+        menu.addItem(.separator())
+        if display == nil {
+            menu.addItem(withTitle: "Start Display", action: #selector(startDisplay), keyEquivalent: "s").target = self
+        } else {
+            menu.addItem(withTitle: "Stop Display", action: #selector(stopDisplay), keyEquivalent: "s").target = self
+        }
+        let snapshot = Diagnostics.shared.snapshot()
+        let status = NSMenuItem(title: "Captured \(snapshot.captured) • Encoded \(snapshot.encoded) • Pending \(snapshot.pendingFrames)", action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit AirMate", action: #selector(quit), keyEquivalent: "q").target = self
+        statusItem?.menu = menu
+    }
+
+    @objc private func openWindow() {
+        if window == nil {
+            let viewController = NSViewController()
+            let label = NSTextField(labelWithString: "AirMate\n\nUse Display Settings to arrange AirMate Display.\nThe Android client listens on UDP port 48620.")
+            label.alignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            viewController.view = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 260))
+            viewController.view.addSubview(label)
+            NSLayoutConstraint.activate([label.centerXAnchor.constraint(equalTo: viewController.view.centerXAnchor), label.centerYAnchor.constraint(equalTo: viewController.view.centerYAnchor)])
+            let created = NSWindow(contentViewController: viewController)
+            created.title = "AirMate"
+            created.delegate = self
+            created.setContentSize(NSSize(width: 520, height: 260))
+            window = created
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+        DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
+    }
+
+    @objc private func startDisplay() {
+        do {
+            let sender = try UDPSender()
+            let display = try CoreGraphicsVirtualDisplayBackend()
+            let encoder = try LatestFrameEncoder(width: 1920, height: 1080, sender: sender)
+            let capture = try DisplayCapture(displayID: display.displayID, width: 1920, height: 1080, encoder: encoder)
+            try capture.start()
+            self.sender = sender; self.display = display; self.encoder = encoder; self.capture = capture
+            Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
+        } catch {
+            let alert = NSAlert(error: error); alert.runModal()
+            stopDisplay()
+        }
+        rebuildMenu()
+    }
+
+    @objc private func stopDisplay() {
+        capture?.stop(); capture = nil; encoder = nil; sender = nil; display?.stop(); display = nil
+        rebuildMenu()
+    }
+
+    @objc private func quit() { stopDisplay(); NSApp.terminate(nil) }
+}
+
