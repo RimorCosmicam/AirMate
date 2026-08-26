@@ -10,6 +10,8 @@
     <string>AirMate</string>
     <key>CFBundleIdentifier</key>
     <string>com.airmate.mac</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

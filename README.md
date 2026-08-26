@@ -34,6 +34,6 @@ Each successful workflow publishes two test artifacts: `AirMate-macOS-arm64.zip`
 
 On macOS, unzip the archive, move `AirMate.app` into Applications, then Control-click it and choose **Open** the first time. Approve any Screen Recording permission macOS requests. This development build is ad-hoc signed, not notarized.
 
-AirMate opens a visible window on first launch and also shows an **AirMate** menu-bar item. Closing the window leaves the menu-bar service running. Choose **Quit AirMate** from that menu when you want to remove or replace the app.
+AirMate opens a visible window on first launch and also shows an icon-only menu-bar item. Closing the window leaves the menu-bar service running. Choose **Quit AirMate** from that menu when you want to remove or replace the app.
 
 On Android, download `app-debug.apk`, allow installation from the browser or file manager when prompted, and install it. The current vertical slice uses a UDP LAN bootstrap rather than production pairing, so both devices must be on the same isolated/trusted Wi-Fi network.

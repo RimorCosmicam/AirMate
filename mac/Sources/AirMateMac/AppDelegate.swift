@@ -12,14 +12,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.title = " AirMate"
             button.toolTip = "AirMate wireless display"
-            if let icon = NSImage(systemSymbolName: "rectangle.connected.to.line.below", accessibilityDescription: "AirMate") {
+            if let icon = NSImage(systemSymbolName: "display", accessibilityDescription: "AirMate") {
                 icon.isTemplate = true
                 button.image = icon
-                button.imagePosition = .imageLeading
+            } else {
+                button.image = fallbackMenuBarIcon()
             }
         }
         rebuildMenu()
@@ -30,6 +30,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    private func fallbackMenuBarIcon() -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.labelColor.setStroke()
+            let display = NSBezierPath(roundedRect: NSRect(x: 2, y: 4, width: 14, height: 10), xRadius: 2, yRadius: 2)
+            display.lineWidth = 1.6
+            display.stroke()
+            let stand = NSBezierPath()
+            stand.move(to: NSPoint(x: 9, y: 4))
+            stand.line(to: NSPoint(x: 9, y: 2))
+            stand.move(to: NSPoint(x: 6.5, y: 2))
+            stand.line(to: NSPoint(x: 11.5, y: 2))
+            stand.lineWidth = 1.6
+            stand.stroke()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
 
     private func rebuildMenu() {
         let menu = NSMenu()
