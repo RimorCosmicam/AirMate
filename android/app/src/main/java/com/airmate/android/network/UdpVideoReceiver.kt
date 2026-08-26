@@ -24,15 +24,21 @@ class UdpVideoReceiver(private val decoder: LowLatencyDecoder, private val port:
         val datagram = ByteArray(1200)
         val packet = DatagramPacket(datagram, datagram.size)
         val reassembler = FrameReassembler()
+        val hello = "AMHELLO1".toByteArray(Charsets.US_ASCII)
+        val broadcast = InetAddress.getByName("255.255.255.255")
+        var lastHelloNanos = 0L
         DatagramSocket(port).use { active ->
             socket = active
             active.receiveBufferSize = 256 * 1024
-            active.soTimeout = 1000
+            active.soTimeout = 100
+            active.broadcast = true
             while (running.get()) {
                 try {
-                    active.broadcast = true
-                    val hello = "AMHELLO1".toByteArray(Charsets.US_ASCII)
-                    active.send(DatagramPacket(hello, hello.size, InetAddress.getByName("255.255.255.255"), port))
+                    val now = System.nanoTime()
+                    if (now - lastHelloNanos >= 1_000_000_000L) {
+                        active.send(DatagramPacket(hello, hello.size, broadcast, port))
+                        lastHelloNanos = now
+                    }
                     packet.length = datagram.size
                     active.receive(packet)
                     val header = VideoHeader.parse(datagram, packet.length) ?: continue
@@ -52,4 +58,3 @@ class UdpVideoReceiver(private val decoder: LowLatencyDecoder, private val port:
     override fun close() { running.set(false); socket?.close(); thread?.join(1000); thread = null }
     companion object { private const val TAG = "AirMate.Android.Network" }
 }
-
