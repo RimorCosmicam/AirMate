@@ -13,7 +13,14 @@ class UdpVideoReceiver(private val decoder: LowLatencyDecoder, private val port:
     private val running = AtomicBoolean(false)
     private var socket: DatagramSocket? = null
     private var thread: Thread? = null
+    @Volatile private var pairingTarget: InetAddress? = null
+    @Volatile private var pairingPort: Int = port
     var receivedFrames = 0L; private set
+
+    fun pairWith(host: String, port: Int) {
+        pairingTarget = InetAddress.getByName(host)
+        pairingPort = port
+    }
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -36,7 +43,9 @@ class UdpVideoReceiver(private val decoder: LowLatencyDecoder, private val port:
                 try {
                     val now = System.nanoTime()
                     if (now - lastHelloNanos >= 1_000_000_000L) {
-                        active.send(DatagramPacket(hello, hello.size, broadcast, port))
+                        val target = pairingTarget ?: broadcast
+                        val targetPort = if (pairingTarget == null) port else pairingPort
+                        active.send(DatagramPacket(hello, hello.size, target, targetPort))
                         lastHelloNanos = now
                     }
                     packet.length = datagram.size

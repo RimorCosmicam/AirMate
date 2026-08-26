@@ -8,6 +8,7 @@ struct StreamSnapshot: Sendable {
     var droppedPending: UInt64 = 0
     var droppedNetwork: UInt64 = 0
     var pendingFrames: Int = 0
+    var lastClientHelloNanos: UInt64 = 0
 }
 
 final class Diagnostics: @unchecked Sendable {
@@ -22,4 +23,3 @@ final class Diagnostics: @unchecked Sendable {
     func mutate(_ body: (inout StreamSnapshot) -> Void) { lock.withLock { body(&value) } }
     func snapshot() -> StreamSnapshot { lock.withLock { value } }
 }
-

@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <application android:theme="@style/AppTheme" android:label="AirMate" android:icon="@drawable/app_icon" android:roundIcon="@drawable/app_icon" android:allowBackup="false" android:usesCleartextTraffic="false">
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
         <activity android:name=".MainActivity" android:screenOrientation="landscape" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

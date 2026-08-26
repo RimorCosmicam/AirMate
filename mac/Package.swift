@@ -19,7 +19,7 @@ let package = Package(
             path: "Sources/AirMateMac",
             linkerSettings: [
                 .linkedFramework("AppKit"), .linkedFramework("CoreGraphics"),
-                .linkedFramework("CoreMedia"), .linkedFramework("CoreVideo"),
+                .linkedFramework("CoreImage"), .linkedFramework("CoreMedia"), .linkedFramework("CoreVideo"),
                 .linkedFramework("IOSurface"), .linkedFramework("VideoToolbox"),
                 .linkedFramework("Network"), .linkedFramework("ScreenCaptureKit")
             ]

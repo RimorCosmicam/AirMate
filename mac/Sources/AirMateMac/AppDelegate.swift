@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 
 @main
 @MainActor
@@ -21,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var encoder: LatestFrameEncoder?
     private var sender: UDPSender?
     private var diagnosticsTimer: Timer?
+    private var wantsDisplayRunning = true
+    private var startingDisplay = false
+    private var lastError: String?
+    private var configuration = DisplayConfiguration(width: 1920, height: 1080, hiDPI: true)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ApplicationMenu.install(target: self)
@@ -28,14 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.toolTip = "AirMate wireless display"
-            if let icon = NSImage(systemSymbolName: "display", accessibilityDescription: "AirMate") {
+            if let icon = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "AirMate") {
                 icon.isTemplate = true
                 button.image = icon
             } else {
                 button.image = fallbackMenuBarIcon()
             }
         }
-        rebuildMenu()
         diagnosticsTimer = Timer.scheduledTimer(
             timeInterval: 1,
             target: self,
@@ -43,8 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             userInfo: nil,
             repeats: true
         )
-        // An app launched from Finder must always acknowledge the launch visibly.
-        // Closing this window returns AirMate to menu-bar-only accessory mode.
         DispatchQueue.main.async { [weak self] in self?.openWindow() }
     }
 
@@ -53,16 +55,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func fallbackMenuBarIcon() -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSColor.labelColor.setStroke()
-            let display = NSBezierPath(roundedRect: NSRect(x: 2, y: 4, width: 14, height: 10), xRadius: 2, yRadius: 2)
-            display.lineWidth = 1.6
-            display.stroke()
-            let stand = NSBezierPath()
-            stand.move(to: NSPoint(x: 9, y: 4))
-            stand.line(to: NSPoint(x: 9, y: 2))
-            stand.move(to: NSPoint(x: 6.5, y: 2))
-            stand.line(to: NSPoint(x: 11.5, y: 2))
-            stand.lineWidth = 1.6
-            stand.stroke()
+            let corners = NSBezierPath()
+            corners.move(to: NSPoint(x: 7, y: 15)); corners.line(to: NSPoint(x: 3, y: 15)); corners.line(to: NSPoint(x: 3, y: 11))
+            corners.move(to: NSPoint(x: 11, y: 15)); corners.line(to: NSPoint(x: 15, y: 15)); corners.line(to: NSPoint(x: 15, y: 11))
+            corners.move(to: NSPoint(x: 7, y: 3)); corners.line(to: NSPoint(x: 3, y: 3)); corners.line(to: NSPoint(x: 3, y: 7))
+            corners.move(to: NSPoint(x: 11, y: 3)); corners.line(to: NSPoint(x: 15, y: 3)); corners.line(to: NSPoint(x: 15, y: 7))
+            corners.lineWidth = 1.7
+            corners.lineCapStyle = .round
+            corners.lineJoinStyle = .round
+            corners.stroke()
             return true
         }
         image.isTemplate = true
@@ -79,7 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             menu.addItem(withTitle: "Stop Display", action: #selector(stopDisplay), keyEquivalent: "s").target = self
         }
         let snapshot = Diagnostics.shared.snapshot()
-        let status = NSMenuItem(title: "Captured \(snapshot.captured) • Encoded \(snapshot.encoded) • Pending \(snapshot.pendingFrames)", action: nil, keyEquivalent: "")
+        let connected = clientIsConnected(snapshot)
+        let statusTitle = display == nil ? "Display Off" : (connected ? "Android Connected" : "Waiting for Android")
+        let status = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
         menu.addItem(.separator())
@@ -89,7 +92,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func refreshUI() {
         rebuildMenu()
-        (window?.contentViewController as? MainViewController)?.update(displayRunning: display != nil)
+        guard let controller = window?.contentViewController as? MainViewController else { return }
+
+        guard CGPreflightScreenCaptureAccess() else {
+            controller.render(.permissionRequired)
+            return
+        }
+        if wantsDisplayRunning && display == nil && !startingDisplay && lastError == nil {
+            startDisplay()
+            return
+        }
+        if startingDisplay {
+            controller.render(.starting)
+        } else if let lastError {
+            controller.render(.failed(lastError))
+        } else if display == nil {
+            controller.render(.stopped(configuration: configuration))
+        } else {
+            let snapshot = Diagnostics.shared.snapshot()
+            if clientIsConnected(snapshot) {
+                controller.render(.connected(snapshot: snapshot, configuration: configuration))
+            } else {
+                controller.render(.waitingForAndroid(pairingURL: PairingAddress.url(port: 48620)))
+            }
+        }
+    }
+
+    private func clientIsConnected(_ snapshot: StreamSnapshot) -> Bool {
+        guard snapshot.lastClientHelloNanos > 0 else { return false }
+        return DispatchTime.now().uptimeNanoseconds - snapshot.lastClientHelloNanos < 3_000_000_000
     }
 
     @objc private func openWindow() {
@@ -97,9 +128,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let viewController = MainViewController()
             viewController.onToggleDisplay = { [weak self] in
                 guard let self else { return }
-                if self.display == nil { self.startDisplay() } else { self.stopDisplay() }
+                self.display == nil ? self.startDisplay() : self.stopDisplay()
             }
-            viewController.update(displayRunning: display != nil)
+            viewController.onOpenPermissionSettings = { [weak self] in self?.openPermissionSettings() }
+            viewController.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
+            viewController.onConfigurationChanged = { [weak self] newConfiguration in
+                self?.applyConfiguration(newConfiguration)
+            }
+            viewController.onPreferredHeightChanged = { [weak self] height in
+                guard let window = self?.window, abs(window.contentLayoutRect.height - height) > 2 else { return }
+                window.setContentSize(NSSize(width: 540, height: height))
+            }
+
             let created = NSWindow(contentViewController: viewController)
             created.title = "AirMate"
             created.titleVisibility = .hidden
@@ -108,8 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             created.titlebarAppearsTransparent = true
             created.backgroundColor = .clear
             created.isOpaque = false
-            created.setContentSize(NSSize(width: 440, height: 130))
-            created.minSize = NSSize(width: 420, height: 120)
+            created.setContentSize(NSSize(width: 540, height: 300))
+            created.minSize = NSSize(width: 520, height: 210)
             created.center()
             created.isReleasedWhenClosed = false
             window = created
@@ -117,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        refreshUI()
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -125,34 +166,128 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func startDisplay() {
+        wantsDisplayRunning = true
+        lastError = nil
+        guard CGPreflightScreenCaptureAccess(), display == nil, !startingDisplay else {
+            refreshUI()
+            return
+        }
+        startingDisplay = true
+        Diagnostics.shared.mutate {
+            $0.lastClientHelloNanos = 0
+            $0.captured = 0
+            $0.submitted = 0
+            $0.encoded = 0
+        }
+        refreshUI()
+
         do {
             let sender = try UDPSender()
-            let display = try CoreGraphicsVirtualDisplayBackend()
-            let encoder = try LatestFrameEncoder(width: 1920, height: 1080, sender: sender)
-            let capture = DisplayCapture(displayID: display.displayID, width: 1920, height: 1080, encoder: encoder)
-            self.sender = sender; self.display = display; self.encoder = encoder; self.capture = capture
+            let display = try CoreGraphicsVirtualDisplayBackend(
+                width: UInt32(configuration.width),
+                height: UInt32(configuration.height),
+                hiDPI: configuration.hiDPI
+            )
+            let encoder = try LatestFrameEncoder(
+                width: Int32(configuration.width),
+                height: Int32(configuration.height),
+                sender: sender
+            )
+            let capture = DisplayCapture(
+                displayID: display.displayID,
+                width: configuration.width,
+                height: configuration.height,
+                encoder: encoder
+            )
+            self.sender = sender
+            self.display = display
+            self.encoder = encoder
+            self.capture = capture
+
             Task { @MainActor [weak self] in
                 do {
                     try await capture.start()
+                    guard self?.capture === capture else { return }
+                    self?.startingDisplay = false
                     Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
                     self?.refreshUI()
                 } catch {
-                    let alert = NSAlert(error: error)
-                    alert.runModal()
-                    self?.stopDisplay()
+                    guard self?.capture === capture else { return }
+                    self?.lastError = error.localizedDescription
+                    self?.tearDownDisplay()
+                    self?.refreshUI()
                 }
             }
         } catch {
-            let alert = NSAlert(error: error); alert.runModal()
-            stopDisplay()
+            lastError = error.localizedDescription
+            tearDownDisplay()
+            refreshUI()
         }
-        refreshUI()
     }
 
     @objc private func stopDisplay() {
-        capture?.stop(); capture = nil; encoder = nil; sender = nil; display?.stop(); display = nil
+        wantsDisplayRunning = false
+        lastError = nil
+        tearDownDisplay()
         refreshUI()
     }
 
-    @objc private func quit() { stopDisplay(); NSApp.terminate(nil) }
+    private func tearDownDisplay() {
+        startingDisplay = false
+        capture?.stop()
+        capture = nil
+        encoder = nil
+        sender = nil
+        display?.stop()
+        display = nil
+        Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
+    }
+
+    private func applyConfiguration(_ newConfiguration: DisplayConfiguration) {
+        guard newConfiguration != configuration else { return }
+        configuration = newConfiguration
+        lastError = nil
+        if display != nil || startingDisplay {
+            tearDownDisplay()
+            startDisplay()
+        } else {
+            refreshUI()
+        }
+    }
+
+    private func openPermissionSettings() {
+        if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(settingsURL)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        }
+    }
+
+    private func saveAndroidApp() {
+        guard let source = Bundle.main.url(forResource: "AirMate", withExtension: "apk") else {
+            lastError = "The Android installer is missing from this build."
+            refreshUI()
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "AirMate.apk"
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard let window else { return }
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let destination = panel.url else { return }
+            do {
+                try Data(contentsOf: source).write(to: destination, options: .atomic)
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            } catch {
+                NSAlert(error: error).beginSheetModal(for: window)
+            }
+        }
+    }
+
+    @objc private func quit() {
+        tearDownDisplay()
+        NSApp.terminate(nil)
+    }
 }

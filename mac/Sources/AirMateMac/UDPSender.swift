@@ -42,6 +42,7 @@ final class UDPSender: @unchecked Sendable {
             }
             if count == 8, String(bytes: buffer[0..<8], encoding: .ascii) == "AMHELLO1" {
                 lock.withLock { destination = peer; hasDestination = true }
+                Diagnostics.shared.mutate { $0.lastClientHelloNanos = DispatchTime.now().uptimeNanoseconds }
                 Diagnostics.shared.networkLog.info("Android client selected")
             } else if count < 0 && errno != EAGAIN && errno != EWOULDBLOCK {
                 Diagnostics.shared.networkLog.error("recvfrom failed: \(errno)")
@@ -80,4 +81,3 @@ final class UDPSender: @unchecked Sendable {
 
     deinit { if fd >= 0 { Darwin.close(fd) } }
 }
-

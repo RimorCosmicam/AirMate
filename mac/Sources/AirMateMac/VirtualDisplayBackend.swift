@@ -19,10 +19,15 @@ final class CoreGraphicsVirtualDisplayBackend: VirtualDisplayBackend {
     private var handle: AMVirtualDisplayHandle?
     let displayID: CGDirectDisplayID
 
-    init(width: UInt32 = 1920, height: UInt32 = 1080, refreshRate: Double = 60) throws {
+    init(
+        width: UInt32 = 1920,
+        height: UInt32 = 1080,
+        refreshRate: Double = 60,
+        hiDPI: Bool = true
+    ) throws {
         var id: CGDirectDisplayID = 0
         var errorPointer: UnsafePointer<CChar>?
-        guard let created = AMVirtualDisplayCreate("AirMate Display", width, height, refreshRate, false, &id, &errorPointer) else {
+        guard let created = AMVirtualDisplayCreate("AirMate Display", width, height, refreshRate, hiDPI, &id, &errorPointer) else {
             throw DisplayError.creation(errorPointer.map(String.init(cString:)) ?? "Unknown virtual display error")
         }
         handle = created
@@ -36,4 +41,3 @@ final class CoreGraphicsVirtualDisplayBackend: VirtualDisplayBackend {
 
     deinit { stop() }
 }
-

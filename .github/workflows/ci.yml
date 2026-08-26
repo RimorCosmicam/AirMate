@@ -11,12 +11,17 @@ permissions:
 
 jobs:
   macos:
+    needs: android
     runs-on: xcode-27
     defaults:
       run:
         working-directory: mac
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: airmate-android-debug
+          path: build-artifacts/android
       - name: Toolchain
         run: swift --version
       - name: Build
@@ -41,9 +46,11 @@ jobs:
           iconutil -c icns dist/AppIcon.iconset -o dist/AirMate.app/Contents/Resources/AppIcon.icns
           cp .build/debug/AirMateMac dist/AirMate.app/Contents/MacOS/AirMate
           cp Resources/Info.plist dist/AirMate.app/Contents/Info.plist
+          cp ../build-artifacts/android/app-debug.apk dist/AirMate.app/Contents/Resources/AirMate.apk
           codesign --force --deep --sign - dist/AirMate.app
           codesign --verify --deep --strict dist/AirMate.app
           test -x dist/AirMate.app/Contents/MacOS/AirMate
+          test -f dist/AirMate.app/Contents/Resources/AirMate.apk
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' dist/AirMate.app/Contents/Info.plist)" = "AirMate"
           ditto -c -k --sequesterRsrc --keepParent dist/AirMate.app dist/AirMate-macOS-arm64.zip
       - uses: actions/upload-artifact@v4
