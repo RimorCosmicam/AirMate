@@ -112,7 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             let snapshot = Diagnostics.shared.snapshot()
             if clientIsConnected(snapshot) {
-                controller.render(.connected(snapshot: snapshot, configuration: configuration))
+                if snapshot.encoded == 0 {
+                    controller.render(.connectingVideo)
+                } else {
+                    controller.render(.connected(snapshot: snapshot, configuration: configuration))
+                }
             } else {
                 controller.render(.waitingForAndroid(pairingURL: PairingAddress.url(port: 48620)))
             }

@@ -14,6 +14,7 @@ enum MainViewState {
     case permissionRequired(restartReady: Bool)
     case starting
     case waitingForAndroid(pairingURL: String?)
+    case connectingVideo
     case connected(snapshot: StreamSnapshot, configuration: DisplayConfiguration)
     case stopped(configuration: DisplayConfiguration)
     case failed(String)
@@ -152,6 +153,13 @@ final class MainViewController: NSViewController {
             primaryButton.title = "Save Android App…"
             secondaryButton.title = "Stop Display"
             onPreferredHeightChanged?(465)
+        case .connectingVideo:
+            setSymbol("arrow.trianglehead.2.clockwise.rotate.90")
+            sectionTitle.stringValue = "Android found"
+            detailLabel.stringValue = "Starting the video stream…"
+            primaryButton.title = "Stop Display"
+            secondaryButton.title = "Save Android App…"
+            onPreferredHeightChanged?(245)
         case let .connected(snapshot, configuration):
             setSymbol("checkmark.circle.fill")
             sectionSymbol.contentTintColor = .systemGreen
@@ -278,7 +286,7 @@ final class MainViewController: NSViewController {
         case let .permissionRequired(restartReady):
             restartReady ? onRestartForPermission?() : onOpenPermissionSettings?()
         case .waitingForAndroid: onSaveAndroidApp?()
-        case .connected, .stopped, .failed: onToggleDisplay?()
+        case .connectingVideo, .connected, .stopped, .failed: onToggleDisplay?()
         case .starting: break
         }
     }
@@ -286,7 +294,7 @@ final class MainViewController: NSViewController {
     @objc private func secondaryAction() {
         switch state {
         case .waitingForAndroid: onToggleDisplay?()
-        case .connected, .stopped, .failed: onSaveAndroidApp?()
+        case .connectingVideo, .connected, .stopped, .failed: onSaveAndroidApp?()
         case .permissionRequired(_): onOpenPermissionSettings?()
         case .starting: break
         }

@@ -34,7 +34,10 @@ final class DisplayCapture: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         configuration.width = width
         configuration.height = height
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        configuration.queueDepth = 1
+        // ScreenCaptureKit's minimum supported queue depth is three. The
+        // downstream encoder remains latest-frame-only, so stale frames still
+        // cannot accumulate beyond the capture handoff.
+        configuration.queueDepth = 3
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = true
         configuration.capturesAudio = false
