@@ -11,7 +11,7 @@ struct DisplayConfiguration: Equatable, Sendable {
 }
 
 enum MainViewState {
-    case permissionRequired
+    case permissionRequired(restartReady: Bool)
     case starting
     case waitingForAndroid(pairingURL: String?)
     case connected(snapshot: StreamSnapshot, configuration: DisplayConfiguration)
@@ -23,6 +23,7 @@ enum MainViewState {
 final class MainViewController: NSViewController {
     var onToggleDisplay: (() -> Void)?
     var onOpenPermissionSettings: (() -> Void)?
+    var onRestartForPermission: (() -> Void)?
     var onSaveAndroidApp: (() -> Void)?
     var onConfigurationChanged: ((DisplayConfiguration) -> Void)?
     var onPreferredHeightChanged: ((CGFloat) -> Void)?
@@ -125,12 +126,15 @@ final class MainViewController: NSViewController {
         sectionSymbol.contentTintColor = .secondaryLabelColor
 
         switch newState {
-        case .permissionRequired:
+        case let .permissionRequired(restartReady):
             setSymbol("lock.shield")
-            sectionTitle.stringValue = "Allow Screen Recording"
-            detailLabel.stringValue = "AirMate is selected in Finder. Drag it into Screen Recording, then switch it on."
-            primaryButton.title = "Open Settings & Show AirMate"
-            secondaryButton.isHidden = true
+            sectionTitle.stringValue = restartReady ? "Restart to finish" : "Allow Screen Recording"
+            detailLabel.stringValue = restartReady
+                ? "After adding and enabling AirMate in Settings, restart it to apply access."
+                : "Open Settings and Finder, then drag the selected AirMate app into Screen Recording."
+            primaryButton.title = restartReady ? "Restart AirMate" : "Open Settings & Show AirMate"
+            secondaryButton.title = "Open Settings Again"
+            secondaryButton.isHidden = !restartReady
             onPreferredHeightChanged?(245)
         case .starting:
             setSymbol("viewfinder")
@@ -271,7 +275,8 @@ final class MainViewController: NSViewController {
 
     @objc private func primaryAction() {
         switch state {
-        case .permissionRequired: onOpenPermissionSettings?()
+        case let .permissionRequired(restartReady):
+            restartReady ? onRestartForPermission?() : onOpenPermissionSettings?()
         case .waitingForAndroid: onSaveAndroidApp?()
         case .connected, .stopped, .failed: onToggleDisplay?()
         case .starting: break
@@ -282,7 +287,8 @@ final class MainViewController: NSViewController {
         switch state {
         case .waitingForAndroid: onToggleDisplay?()
         case .connected, .stopped, .failed: onSaveAndroidApp?()
-        case .permissionRequired, .starting: break
+        case .permissionRequired(_): onOpenPermissionSettings?()
+        case .starting: break
         }
     }
 }

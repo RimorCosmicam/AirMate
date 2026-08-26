@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var diagnosticsTimer: Timer?
     private var wantsDisplayRunning = true
     private var startingDisplay = false
+    private var permissionSettingsOpened = false
     private var lastError: String?
     private var configuration = DisplayConfiguration(width: 1920, height: 1080, hiDPI: true)
 
@@ -95,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let controller = window?.contentViewController as? MainViewController else { return }
 
         guard CGPreflightScreenCaptureAccess() else {
-            controller.render(.permissionRequired)
+            controller.render(.permissionRequired(restartReady: permissionSettingsOpened))
             return
         }
         if wantsDisplayRunning && display == nil && !startingDisplay && lastError == nil {
@@ -131,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.display == nil ? self.startDisplay() : self.stopDisplay()
             }
             viewController.onOpenPermissionSettings = { [weak self] in self?.openPermissionSettings() }
+            viewController.onRestartForPermission = { [weak self] in self?.restartForPermission() }
             viewController.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
             viewController.onConfigurationChanged = { [weak self] newConfiguration in
                 self?.applyConfiguration(newConfiguration)
@@ -256,11 +258,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func openPermissionSettings() {
+        permissionSettingsOpened = true
+        refreshUI()
         if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(settingsURL)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        }
+    }
+
+    private func restartForPermission() {
+        let launchConfiguration = NSWorkspace.OpenConfiguration()
+        launchConfiguration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(
+            at: Bundle.main.bundleURL,
+            configuration: launchConfiguration
+        ) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    NSAlert(error: error).runModal()
+                } else {
+                    NSApp.terminate(nil)
+                }
+            }
         }
     }
 
