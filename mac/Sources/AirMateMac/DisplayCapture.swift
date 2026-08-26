@@ -12,9 +12,9 @@ final class DisplayCapture: @unchecked Sendable {
     init(displayID: CGDirectDisplayID, width: Int, height: Int, encoder: LatestFrameEncoder) throws {
         self.encoder = encoder
         let properties: [CFString: Any] = [
-            kCGDisplayStreamShowCursor: true,
-            kCGDisplayStreamMinimumFrameTime: 1.0 / 60.0,
-            kCGDisplayStreamQueueDepth: 1
+            CGDisplayStream.showCursor: true,
+            CGDisplayStream.minimumFrameTime: 1.0 / 60.0,
+            CGDisplayStream.queueDepth: 1
         ]
         guard let created = CGDisplayStream(dispatchQueueDisplay: displayID,
                                             outputWidth: width, outputHeight: height,
@@ -39,9 +39,10 @@ final class DisplayCapture: @unchecked Sendable {
     func stop() { _ = stream?.stop(); stream = nil }
 
     private func consume(_ surface: IOSurface) {
-        var buffer: CVPixelBuffer?
-        guard CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, nil, &buffer) == kCVReturnSuccess,
-              let buffer else { return }
+        var unmanagedBuffer: Unmanaged<CVPixelBuffer>?
+        guard CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, surface, nil, &unmanagedBuffer) == kCVReturnSuccess,
+              let unmanagedBuffer else { return }
+        let buffer = unmanagedBuffer.takeRetainedValue()
         let id = nextFrameID
         nextFrameID &+= 1
         let nanos = DispatchTime.now().uptimeNanoseconds
@@ -51,4 +52,3 @@ final class DisplayCapture: @unchecked Sendable {
 
     deinit { stop() }
 }
-

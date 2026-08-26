@@ -112,7 +112,7 @@ final class LatestFrameEncoder: @unchecked Sendable {
             offset += 4
             guard length > 0, offset + Int(length) <= totalLength else { return }
             annexB.append(contentsOf: [0, 0, 0, 1])
-            annexB.append(bytes.bindMemory(to: UInt8.self)[offset ..< offset + Int(length)])
+            annexB.append(contentsOf: bytes.bindMemory(to: UInt8.self)[offset ..< offset + Int(length)])
             offset += Int(length)
         }
         sender.send(accessUnit: annexB, frameID: metadata.id, captureNanos: metadata.captureNanos, keyframe: keyframe, hevc: hevc)
@@ -169,4 +169,3 @@ private let compressionCallback: VTCompressionOutputCallback = { refcon, sourceF
     let metadata = Unmanaged<FrameMetadata>.fromOpaque(sourceFrameRefcon).takeRetainedValue()
     encoder.encoded(status: status, sampleBuffer: sampleBuffer, metadata: metadata)
 }
-

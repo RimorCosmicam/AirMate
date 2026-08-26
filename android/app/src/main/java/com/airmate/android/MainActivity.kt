@@ -32,10 +32,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             setTextColor(Color.WHITE); setBackgroundColor(0x66000000); textSize = 13f
             setPadding(18, 12, 18, 12); text = "AirMate • waiting for Mac"
         }
-        setContentView(FrameLayout(this).apply {
-            addView(surfaceView, FrameLayout.LayoutParams(-1, -1))
-            addView(overlay, FrameLayout.LayoutParams(-2, -2).apply { gravity = Gravity.TOP or Gravity.START })
-        })
+        val root = FrameLayout(this)
+        root.addView(surfaceView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        val overlayParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        overlayParams.gravity = Gravity.TOP or Gravity.START
+        root.addView(overlay, overlayParams)
+        setContentView(root)
         overlay.post(updateStats)
     }
 
