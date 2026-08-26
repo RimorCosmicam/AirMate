@@ -102,8 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             created.delegate = self
             created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             created.titlebarAppearsTransparent = true
-            created.setContentSize(NSSize(width: 640, height: 430))
-            created.minSize = NSSize(width: 620, height: 410)
+            created.setContentSize(NSSize(width: 520, height: 230))
+            created.minSize = NSSize(width: 500, height: 220)
             created.center()
             created.isReleasedWhenClosed = false
             window = created
