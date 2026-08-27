@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val airMateSigningStore = System.getenv("AIRMATE_KEYSTORE_PATH")
+
 android {
     namespace = "com.airmate.android"
     compileSdk = 35
@@ -13,6 +15,25 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.1.1"
+    }
+
+    signingConfigs {
+        if (airMateSigningStore != null) {
+            create("airMateTest") {
+                storeFile = file(airMateSigningStore)
+                storePassword = System.getenv("AIRMATE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("AIRMATE_KEY_ALIAS")
+                keyPassword = System.getenv("AIRMATE_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (airMateSigningStore != null) {
+                signingConfig = signingConfigs.getByName("airMateTest")
+            }
+        }
     }
 
     buildFeatures { buildConfig = true }

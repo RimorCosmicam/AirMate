@@ -12,6 +12,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.airmate.android.decoder.LowLatencyDecoder
 import com.airmate.android.network.UdpVideoReceiver
 import com.airmate.android.network.PairingCode
@@ -43,6 +46,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enterImmersiveMode()
         window.decorView.keepScreenOn = true
         surfaceView = SurfaceView(this).also { it.holder.addCallback(this) }
 
@@ -89,6 +93,33 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         ))
         setContentView(root)
         waitingPanel.post(updateConnectionState)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterImmersiveMode()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterImmersiveMode()
+    }
+
+    private fun enterImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
     private fun scanPairingCode() {
