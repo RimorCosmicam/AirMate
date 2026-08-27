@@ -243,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         capture?.stop()
         capture = nil
         encoder = nil
+        sender?.close()
         sender = nil
         display?.stop()
         display = nil
