@@ -202,6 +202,17 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * request entirely and would otherwise leave the screen behind a curtain for good.
      */
     private fun settleCurtain(now: Long) {
+        // Nothing may hold the curtain up indefinitely. While it is drawn the overlay renders it in
+        // preference to anything else, so a stuck curtain silently swallows the control card — and
+        // a fully parted curtain draws nothing, so the screen looks perfectly normal while back
+        // appears to do nothing at all.
+        if (curtainDrawn && now - curtainSince >= CURTAIN_LIMIT_NANOS) {
+            awaitedShape = null
+            curtainClosed = false
+            curtainDrawn = false
+            syncOverlay()
+            return
+        }
         if (!curtainClosed) return
         val wanted = awaitedShape
         val reshaped = wanted != null && status?.width == wanted.first && status?.height == wanted.second
@@ -209,6 +220,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if ((reshaped && painted) || now - curtainSince >= CURTAIN_PATIENCE_NANOS) {
             awaitedShape = null
             curtainClosed = false
+            // Taken down on a timer rather than when the animation reports finishing: an animation
+            // already at rest never reports anything, and the flag stuck true forever.
+            root.postDelayed({
+                curtainDrawn = false
+                syncOverlay()
+            }, CURTAIN_FADE_MILLIS)
         }
     }
 
@@ -519,12 +536,17 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * afterwards — on that first connection there is nothing open on the display to disturb.
      */
     private fun fitScreenOnce() {
-        if (settings.fittedScreen || !onboarded || !streaming || curtainDrawn) return
+        if (settings.fittedScreen || !onboarded || curtainDrawn) return
         val panel = panelSize() ?: return
         val current = status ?: return
         settings.fittedScreen = true
         if (panel.first == current.width && panel.second == current.height) return
-        beginDisplayChange("Fitting", panel.first, panel.second)
+
+        // Only draw a curtain over a picture that is actually there. Waiting for the stream before
+        // fitting meant the screen appeared, was covered to say "Fitting", and came back looking
+        // identical — a transition whose entire content was the fact that a transition happened.
+        // Done while pairing, the card is already covering it and there is nothing to hide.
+        if (streaming) beginDisplayChange("Fitting", panel.first, panel.second)
         send(ControlMessage.setDisplay(panel.first, panel.second, hiDPI = true))
     }
 
@@ -674,5 +696,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         const val PANEL_REPEAT_NANOS = 5_000_000_000L
         /** How long to hold the curtain for a host that may never change shape. */
         const val CURTAIN_PATIENCE_NANOS = 6_000_000_000L
+        /** Long enough for the curtain to part before it leaves the screen. */
+        const val CURTAIN_FADE_MILLIS = 500L
+        /** Nothing keeps the curtain up past this, whatever else goes wrong. */
+        const val CURTAIN_LIMIT_NANOS = 10_000_000_000L
     }
 }
