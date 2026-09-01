@@ -135,6 +135,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var curtainLabel by mutableStateOf("ROTATING")
     private var awaitedShape: Pair<Int, Int>? = null
     private var curtainSince = 0L
+    private var framesAtCurtain = 0L
 
     // Measured rather than promised: the frame-skip setting is only worth choosing between if you
     // can see what it costs and what it saves.
@@ -202,8 +203,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun settleCurtain(now: Long) {
         if (!curtainClosed) return
         val wanted = awaitedShape
-        val arrived = wanted != null && status?.width == wanted.first && status?.height == wanted.second
-        if (arrived || now - curtainSince >= CURTAIN_PATIENCE_NANOS) {
+        val reshaped = wanted != null && status?.width == wanted.first && status?.height == wanted.second
+        val painted = (receiver?.receivedFrames ?: 0) > framesAtCurtain
+        if ((reshaped && painted) || now - curtainSince >= CURTAIN_PATIENCE_NANOS) {
             awaitedShape = null
             curtainClosed = false
         }
@@ -477,6 +479,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         curtainLabel = label
         awaitedShape = width to height
         curtainSince = System.nanoTime()
+        // What has already been decoded belongs to the display that is about to be replaced. The
+        // curtain waits for video from the new one, not merely for the host to claim a new shape:
+        // the last frame of the old session, scaled into the new one's surface, is exactly the
+        // stretched still that made this look broken.
+        framesAtCurtain = receiver?.receivedFrames ?: 0
         curtainDrawn = true
         // The card asked for this; it should not be sitting there when the picture comes back.
         cardEdge = null

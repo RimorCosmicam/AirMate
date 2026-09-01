@@ -83,6 +83,33 @@ AMVirtualDisplayHandle AMVirtualDisplayCreate(const char *name, uint32_t width, 
     }
 }
 
+bool AMVirtualDisplayApplyMode(AMVirtualDisplayHandle handle, uint32_t width, uint32_t height,
+                               double refreshRate, bool hiDPI, const char **errorMessage) {
+    @autoreleasepool {
+        if (!handle) {
+            AMSetError(@"No virtual display to reconfigure", errorMessage);
+            return false;
+        }
+        Class modeClass = NSClassFromString(@"CGVirtualDisplayMode");
+        Class settingsClass = NSClassFromString(@"CGVirtualDisplaySettings");
+        if (!modeClass || !settingsClass) {
+            AMSetError(@"CGVirtualDisplay classes are unavailable on this macOS version", errorMessage);
+            return false;
+        }
+        CGVirtualDisplay *display = (__bridge CGVirtualDisplay *)handle;
+        CGVirtualDisplayMode *mode = [[modeClass alloc] initWithWidth:width height:height refreshRate:refreshRate];
+        CGVirtualDisplaySettings *settings = [[settingsClass alloc] init];
+        settings.hiDPI = hiDPI ? 1 : 0;
+        settings.modes = @[mode];
+        if (![display applySettings:settings]) {
+            AMSetError(@"CGVirtualDisplay rejected the requested settings", errorMessage);
+            return false;
+        }
+        *errorMessage = nullptr;
+        return true;
+    }
+}
+
 void AMVirtualDisplayDestroy(AMVirtualDisplayHandle handle) {
     if (handle) CFRelease(handle);
 }

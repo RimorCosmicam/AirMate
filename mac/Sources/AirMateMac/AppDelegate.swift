@@ -334,12 +334,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard newConfiguration != model.configuration else { return }
         model.configuration = newConfiguration
         lastError = nil
+
+        // Change the display's mode in place where we can. Destroying and remaking it hands macOS
+        // a different display, so whatever windows were on it are stranded and the arrangement is
+        // lost — and the replacement starts empty, which is what left the client showing a frozen
+        // frame from the display that no longer existed.
+        if let display, !startingDisplay,
+           reshapeInPlace(display, to: newConfiguration) {
+            return
+        }
+
         if display != nil || startingDisplay {
             tearDownDisplay()
             startDisplay()
         } else {
             refreshUI()
         }
+    }
+
+    /// Returns false if this display will not take the new mode, leaving the caller to rebuild it.
+    private func reshapeInPlace(_ display: VirtualDisplayBackend, to configuration: DisplayConfiguration) -> Bool {
+        do {
+            try display.resize(
+                width: UInt32(configuration.width),
+                height: UInt32(configuration.height),
+                refreshRate: 60,
+                hiDPI: configuration.hiDPI
+            )
+        } catch {
+            Diagnostics.shared.displayLog.error(
+                "In-place resize refused, rebuilding the display: \(error.localizedDescription)"
+            )
+            return false
+        }
+
+        // The capture and the encoder are both sized, so they are replaced — but the display, its
+        // ID, and the socket the client is already paired to all survive.
+        capture?.stop()
+        capture = nil
+        encoder = nil
+        runningConfiguration = nil
+        guard let sender else { return false }
+
+        do {
+            let encoder = try LatestFrameEncoder(
+                width: Int32(configuration.width),
+                height: Int32(configuration.height),
+                sender: sender
+            )
+            let capture = DisplayCapture(
+                displayID: display.displayID,
+                width: configuration.width,
+                height: configuration.height,
+                encoder: encoder
+            )
+            self.encoder = encoder
+            self.capture = capture
+            Task { @MainActor [weak self] in
+                do {
+                    try await capture.start()
+                    guard let self, self.capture === capture else { return }
+                    self.runningConfiguration = configuration
+                    self.lastGoodConfiguration = configuration
+                    // The client threw away everything it had when the session changed, and a
+                    // display that is not moving will not produce a frame on its own.
+                    self.encoder?.requestKeyframe()
+                    Diagnostics.shared.displayLog.info(
+                        "AirMate Display reshaped to \(configuration.resolutionLabel) in place"
+                    )
+                    self.refreshUI()
+                } catch {
+                    guard let self, self.capture === capture else { return }
+                    self.lastError = error.localizedDescription
+                    self.tearDownDisplay()
+                    self.refreshUI()
+                }
+            }
+        } catch {
+            lastError = error.localizedDescription
+            tearDownDisplay()
+            refreshUI()
+            return true
+        }
+        refreshUI()
+        return true
     }
 
     private func openPermissionSettings() {
