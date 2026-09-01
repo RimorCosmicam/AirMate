@@ -31,18 +31,11 @@ final class AppModel: ObservableObject {
     @Published var welcomeCompleted = UserDefaults.standard.bool(forKey: welcomeKey)
     @Published var launchAtLogin = LoginItem.isEnabled
 
-    /// An Android client has asked to drive this Mac and is waiting on a human.
-    ///
-    /// Held as the address rather than a flag so the window can name who is asking. Control over
-    /// an unauthenticated LAN socket is not something to grant silently.
-    @Published var controlRequest: String?
-
     var onToggleDisplay: () -> Void = {}
     var onOpenPermissionSettings: () -> Void = {}
     var onRestartForPermission: () -> Void = {}
     var onSaveAndroidApp: () -> Void = {}
     var onConfigurationChanged: (DisplayConfiguration) -> Void = { _ in }
-    var onControlDecision: (Bool) -> Void = { _ in }
     var onLaunchAtLogin: (Bool) -> Void = { _ in }
     var onClose: () -> Void = {}
 

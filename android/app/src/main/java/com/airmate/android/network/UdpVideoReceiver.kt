@@ -9,6 +9,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.SocketTimeoutException
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class UdpVideoReceiver(
@@ -17,6 +18,12 @@ class UdpVideoReceiver(
     private val onStatus: (StatusMessage) -> Unit = {}
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
+    // Control messages are sent from button taps, which happen on the main thread — and Android
+    // throws NetworkOnMainThreadException for a socket write there. The failure was swallowed, so
+    // every command the tablet "sent" went nowhere and the Mac was never asked for permission.
+    private val controlThread = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "AirMate-Control").apply { isDaemon = true }
+    }
     private var socket: DatagramSocket? = null
     private var thread: Thread? = null
     private val reassembler = FrameReassembler()
@@ -55,8 +62,10 @@ class UdpVideoReceiver(
         val target = macAddress ?: pairingTarget ?: return
         val active = socket ?: return
         val targetPort = if (macAddress != null) macPort else pairingPort
-        runCatching { active.send(DatagramPacket(bytes, bytes.size, target, targetPort)) }
-            .onFailure { if (running.get()) Log.e(TAG, "control send failed", it) }
+        controlThread.execute {
+            runCatching { active.send(DatagramPacket(bytes, bytes.size, target, targetPort)) }
+                .onFailure { if (running.get()) Log.e(TAG, "control send failed", it) }
+        }
     }
 
     fun start() {
@@ -109,6 +118,12 @@ class UdpVideoReceiver(
         }
     }
 
-    override fun close() { running.set(false); socket?.close(); thread?.join(1000); thread = null }
+    override fun close() {
+        running.set(false)
+        controlThread.shutdownNow()
+        socket?.close()
+        thread?.join(1000)
+        thread = null
+    }
     companion object { private const val TAG = "AirMate.Android.Network" }
 }

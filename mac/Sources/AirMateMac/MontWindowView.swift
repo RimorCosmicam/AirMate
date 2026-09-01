@@ -37,15 +37,6 @@ struct MontWindowView: View {
         MontWordmark()
             .padding(.bottom, 16)
 
-        // A request to drive this Mac outranks whatever the window was showing: it is the only
-        // thing here that a stranger on the network can cause to appear.
-        if let address = model.controlRequest {
-            MontDetail("\(address) wants to control this display.")
-            MontRow(label: "Allow control") { model.onControlDecision(true) }
-            MontRow(label: "Refuse", emphasis: MontWhite.dim) { model.onControlDecision(false) }
-            Divider().opacity(0)
-        }
-
         switch model.state {
         case let .permissionRequired(restartReady):
             permission(restartReady: restartReady)

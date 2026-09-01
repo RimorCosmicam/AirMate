@@ -50,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.onRestartForPermission = { [weak self] in self?.restartForPermission() }
         model.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
         model.onConfigurationChanged = { [weak self] in self?.applyConfiguration($0) }
-        model.onControlDecision = { [weak self] allow in self?.resolveControlRequest(allow) }
         model.onLaunchAtLogin = { [weak self] wanted in
             // Read the state back: a login item the user has denied in System Settings stays
             // denied, and a switch that lies about that is worse than no switch.
@@ -202,7 +201,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do {
             let sender = try UDPSender()
             sender.onCommand = { [weak self] command in self?.perform(command) }
-            sender.onControlRequest = { [weak self] address in self?.model.controlRequest = address }
             // A client that arrives mid-GOP has nothing it can decode until the next keyframe, and
             // there is no retransmission for it to ask with. Give it one immediately.
             sender.onClientChanged = { [weak self] in self?.encoder?.requestKeyframe() }
@@ -264,11 +262,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender = nil
         display?.stop()
         display = nil
-        model.controlRequest = nil
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
     }
 
-    /// A command from the tablet, already checked against the authorised address.
+    /// A command from the paired tablet.
     private func perform(_ command: ControlPacket.Command) {
         switch command {
         case .hello:
@@ -282,12 +279,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .requestIDR:
             encoder?.requestKeyframe()
         }
-    }
-
-    private func resolveControlRequest(_ allow: Bool) {
-        sender?.resolveControlRequest(allow: allow)
-        model.controlRequest = nil
-        if allow { Diagnostics.shared.networkLog.info("Control authorised by the user") }
     }
 
     private func applyConfiguration(_ newConfiguration: DisplayConfiguration) {

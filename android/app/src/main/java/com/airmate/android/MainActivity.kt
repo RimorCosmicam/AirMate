@@ -117,6 +117,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     /** When the Mac last said anything about itself. */
     @Volatile private var lastStatusNanos = 0L
 
+    /** When the stream first looked unwell, or zero while it looks fine. */
+    private var troubledSince = 0L
+
     // Measured rather than promised: the frame-skip setting is only worth choosing between if you
     // can see what it costs and what it saves.
     private var fps by mutableIntStateOf(0)
@@ -134,22 +137,30 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             // Only a Mac that *was* talking and then stopped counts as gone. A Mac that has never
             // sent status — an older build, or one whose datagrams are being dropped — must not be
             // declared dead on the strength of a signal that was never there.
+            val now = System.nanoTime()
             val everHeard = lastStatusNanos != 0L
-            val goneQuiet = everHeard &&
-                System.nanoTime() - lastStatusNanos >= HOST_SILENCE_NANOS
+            val goneQuiet = everHeard && now - lastStatusNanos >= HOST_SILENCE_NANOS
             val hostRunning = status?.running != false
+            val healthy = !goneQuiet && hostRunning
 
-            if (frames > 0 && !streaming && hostRunning) {
+            // Trouble has to persist before anything is torn down. A display being restarted, a
+            // dropped status datagram or a single stalled tick would otherwise flash the whole
+            // pairing screen over the video and take it away again half a second later, which is
+            // far worse to sit in front of than the brief interruption it is reporting.
+            if (healthy) troubledSince = 0L else if (troubledSince == 0L) troubledSince = now
+
+            if (frames > 0 && !streaming && healthy) {
                 streaming = true
                 everStreamed = true
                 // The ground only parts once there is something behind it to reveal, and once the
                 // reader is done being introduced to it.
                 if (onboarded) leaving = true
                 syncOverlay()
-            } else if (streaming && (goneQuiet || !hostRunning)) {
+            } else if (streaming && troubledSince != 0L && now - troubledSince >= HOST_SILENCE_NANOS) {
                 streaming = false
                 leaving = false
                 cardEdge = null
+                troubledSince = 0L
                 syncOverlay()
             }
             sampleRates()

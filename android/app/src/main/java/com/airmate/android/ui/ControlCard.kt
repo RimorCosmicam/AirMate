@@ -86,7 +86,7 @@ fun ControlCard(
             if (status != null && !authorised) {
                 Spacer(Modifier.height(6.dp))
                 MontDetail(
-                    "This tablet is not allowed to change anything yet. Look at the Mac — it is asking.",
+                    "The Mac has to allow this tablet first. Change anything here and it will ask you there.",
                     alpha = MontWhite.DETAIL
                 )
             }
@@ -94,8 +94,7 @@ fun ControlCard(
             Spacer(Modifier.height(14.dp))
 
             MontRow(
-                label = if (status?.running == true) "Stop display" else "Start display",
-                enabled = authorised
+                label = if (status?.running == true) "Stop display" else "Start display"
             ) { onStartStop(status?.running != true) }
 
             Spacer(Modifier.height(10.dp))
@@ -104,7 +103,7 @@ fun ControlCard(
                 options = RESOLUTIONS.map { "${it.first} × ${it.second}" },
                 selected = RESOLUTIONS.indexOfFirst { it.first == status?.width && it.second == status.height }
             ) { index ->
-                if (authorised) onResolution(RESOLUTIONS[index].first, RESOLUTIONS[index].second)
+                onResolution(RESOLUTIONS[index].first, RESOLUTIONS[index].second)
             }
 
             Spacer(Modifier.height(8.dp))
@@ -112,7 +111,6 @@ fun ControlCard(
                 MontLabel("HIDPI", Modifier.weight(1f), alpha = MontWhite.DIM, size = 11)
                 MontToggle(
                     checked = status?.hiDPI == true,
-                    enabled = authorised,
                     onChange = onHiDPI
                 )
             }
@@ -152,7 +150,7 @@ fun ControlCard(
             }
 
             Spacer(Modifier.height(12.dp))
-            MontRow(label = "Ask for a fresh keyframe", enabled = authorised, active = false) {
+            MontRow(label = "Ask for a fresh keyframe", active = false) {
                 onRequestKeyframe()
             }
             MontRow(label = "Close", active = false, onClick = onDismiss)

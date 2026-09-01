@@ -51,11 +51,11 @@ Sent by Android so the tablet can drive the Mac's display without the user walki
 
 `set display` carrying the running configuration is a no-op rather than a restart, so a client that repeats its state does not tear the display down.
 
-### Authorisation
+### Who may send one
 
-Type 1 is always honoured; it only names a video destination, which the broadcast hello already does. Types 2 through 5 change the Mac's state and are refused until the user has authorised that specific source address, in this session, in the Mac's own window. The first such datagram from an unauthorised address raises a confirmation there and is otherwise discarded — it is not queued and not replayed once permission is given.
+Pairing is the authorisation. The client currently receiving video is the client whose commands are obeyed; a datagram from any other address is discarded. There is no second consent step, because a device that is already being sent the screen gains nothing by also being asked whether it may change it.
 
-Authorisation is per address and lasts for the life of the sender. It is not authentication: the transport is unencrypted and an attacker who can forge a source address can act as an authorised client. It exists so that a device on the LAN cannot restart your display without a human agreeing once, and it claims nothing beyond that. See `docs/SECURITY.md`.
+This is not authentication. The transport is unencrypted and an attacker who can forge a source address, or who wins the race to be the paired client, can drive the host. See `docs/SECURITY.md`.
 
 ## Status datagram
 

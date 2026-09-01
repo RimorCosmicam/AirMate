@@ -9,18 +9,11 @@ final class UDPSender: @unchecked Sendable {
     private var hasDestination = false
     private let sessionID = UInt64.random(in: 1 ... UInt64.max)
 
-    /// The one address allowed to change what this Mac is doing, for the life of this sender.
+    /// A command from the paired client. Delivered on the main queue.
     ///
-    /// Not authentication — the transport is unencrypted and a forged source address defeats it.
-    /// It exists so that a device on the LAN cannot restart your display without a human agreeing
-    /// once. See `docs/SECURITY.md`.
-    private var authorisedControl: UInt32?
-    private var pendingControl: UInt32?
-
-    /// A command from an authorised client. Delivered on the main queue.
+    /// Pairing is the authorisation: the device receiving the video is the device that may change
+    /// it. There is no second consent step, and no authentication either — see `docs/SECURITY.md`.
     var onCommand: ((ControlPacket.Command) -> Void)?
-    /// A client is asking for control and needs a human. Delivered on the main queue.
-    var onControlRequest: ((String) -> Void)?
     /// A different client has become the video destination. Delivered on the main queue.
     var onClientChanged: (() -> Void)?
 
@@ -102,42 +95,18 @@ final class UDPSender: @unchecked Sendable {
 
     private func handle(_ command: ControlPacket.Command, from peer: sockaddr_in) -> Bool {
         guard command.changesState else { return adopt(peer) }
-
-        let source = peer.sin_addr.s_addr
-        let authorised = lock.withLock { authorisedControl == source }
-        if authorised {
-            DispatchQueue.main.async { [weak self] in self?.onCommand?(command) }
-            return true
+        // The paired client — the one already being sent video — is the one that may change it.
+        let paired = lock.withLock {
+            hasDestination && destination.sin_addr.s_addr == peer.sin_addr.s_addr
         }
-
-        // Raise the question once per address and drop the datagram. It is not queued and not
-        // replayed once permission is given — a command that arrived before anyone agreed to it
-        // should not take effect the moment they do.
-        let alreadyAsking = lock.withLock {
-            let asking = pendingControl == source
-            pendingControl = source
-            return asking
-        }
-        if !alreadyAsking {
-            let address = Self.addressString(peer)
-            Diagnostics.shared.networkLog.info("Control requested by \(address, privacy: .public)")
-            DispatchQueue.main.async { [weak self] in self?.onControlRequest?(address) }
-        }
+        if paired { DispatchQueue.main.async { [weak self] in self?.onCommand?(command) } }
         return true
-    }
-
-    /// Grant or refuse the address currently asking.
-    func resolveControlRequest(allow: Bool) {
-        lock.withLock {
-            if allow { authorisedControl = pendingControl }
-            pendingControl = nil
-        }
     }
 
     func sendStatus(running: Bool, hiDPI: Bool, width: Int, height: Int, encodedFrames: UInt64) {
         let target: (address: sockaddr_in, authorised: Bool)? = lock.withLock {
             guard fd >= 0, hasDestination else { return nil }
-            return (destination, authorisedControl == destination.sin_addr.s_addr)
+            return (destination, true)
         }
         guard let target else { return }
         var address = target.address
@@ -184,13 +153,6 @@ final class UDPSender: @unchecked Sendable {
                 }
             }
         }
-    }
-
-    private static func addressString(_ peer: sockaddr_in) -> String {
-        var source = peer.sin_addr
-        var text = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-        inet_ntop(AF_INET, &source, &text, socklen_t(INET_ADDRSTRLEN))
-        return String(cString: text)
     }
 
     func close() {
