@@ -37,6 +37,9 @@ final class AppModel: ObservableObject {
     /// is missing, so the window has to say so rather than letting taps quietly do nothing.
     @Published var pointerPermitted = false
 
+    /// The tablet's own panel size, once it has said. Nil until then.
+    @Published var clientDisplay: (width: Int, height: Int)?
+
     var onToggleDisplay: () -> Void = {}
     var onOpenPermissionSettings: () -> Void = {}
     var onRestartForPermission: () -> Void = {}

@@ -100,9 +100,12 @@ struct MontWindowView: View {
     private func connected(snapshot: StreamSnapshot, configuration: DisplayConfiguration) -> some View {
         MontDetail("AirMate Display is active as your second monitor.")
         HStack(alignment: .top, spacing: 26) {
+            // Not the resolution: the chips below already say which one is running, and saying it
+            // twice tells you nothing the second time. What the window cannot otherwise show is
+            // what the tablet itself measures — the number you actually want when choosing.
             MontMetric(
-                title: "RESOLUTION",
-                value: configuration.resolutionLabel + (configuration.hiDPI ? " HiDPI" : "")
+                title: "TABLET",
+                value: model.clientDisplay.map { "\($0.width) × \($0.height)" } ?? "—"
             )
             MontMetric(title: "REFRESH", value: "60 Hz")
             MontMetric(title: "CODEC", value: "HEVC")

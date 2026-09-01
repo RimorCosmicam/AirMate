@@ -50,6 +50,11 @@ Sent by Android so the tablet can drive the Mac's display without the user walki
 | 5 | request IDR | none |
 | 6 | click | `u16` x, `u16` y |
 | 7 | scroll | `u8` phase (0 begin, 1 continue, 2 end), `u16` x, `u16` y, `i16` dx, `i16` dy |
+| 8 | client display | `u16` width, `u16` height |
+
+`client display` is the only message that tells the host anything rather than asking it for
+something: the client's own panel size, in its own pixels and current orientation. The host has no
+other way to know it, and without it the only resolution it can name is the one it already chose.
 
 Click coordinates are normalised: `0` is the left or top edge of the streamed display and `65535`
 the right or bottom, whatever its resolution. The host maps them onto its own display bounds, so

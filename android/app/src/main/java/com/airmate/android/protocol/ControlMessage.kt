@@ -22,6 +22,7 @@ object ControlMessage {
     const val TYPE_REQUEST_IDR = 5
     const val TYPE_CLICK = 6
     const val TYPE_SCROLL = 7
+    const val TYPE_CLIENT_DISPLAY = 8
 
     const val PHASE_BEGIN = 0
     const val PHASE_CONTINUE = 1
@@ -67,6 +68,21 @@ object ControlMessage {
             .putShort(dy.coerceIn(-32768, 32767).toShort())
             .array()
         return build(TYPE_SCROLL, payload)
+    }
+
+    /**
+     * What this tablet's own panel measures, in its pixels and current orientation.
+     *
+     * The only message that tells the host something rather than asking it for something. Without
+     * it the Mac can only name the resolution it already picked, which is the one number nobody
+     * needs to be told.
+     */
+    fun clientDisplay(width: Int, height: Int): ByteArray {
+        val payload = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN)
+            .putShort(width.coerceIn(0, 65535).toShort())
+            .putShort(height.coerceIn(0, 65535).toShort())
+            .array()
+        return build(TYPE_CLIENT_DISPLAY, payload)
     }
 
     private fun build(type: Int, payload: ByteArray): ByteArray =

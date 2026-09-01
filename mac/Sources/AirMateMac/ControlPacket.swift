@@ -18,6 +18,8 @@ enum ControlPacket {
         /// Coordinates are normalised across the streamed display, `0` to `65535` on each axis.
         case click(x: UInt16, y: UInt16)
         case scroll(phase: ScrollPhase, x: UInt16, y: UInt16, dx: Int16, dy: Int16)
+        /// What the client's own panel measures, in its pixels and current orientation.
+        case clientDisplay(width: UInt16, height: UInt16)
 
         /// Whether obeying this would change what the Mac is doing.
         ///
@@ -61,6 +63,12 @@ enum ControlPacket {
                 dx: Int16(bitPattern: buffer.readBE16(headerBytes + 5)),
                 dy: Int16(bitPattern: buffer.readBE16(headerBytes + 7))
             )
+        case 8:
+            guard payloadLength >= 4 else { return nil }
+            let width = buffer.readBE16(headerBytes)
+            let height = buffer.readBE16(headerBytes + 2)
+            guard width > 0, height > 0 else { return nil }
+            return .clientDisplay(width: width, height: height)
         default: return nil
         }
     }

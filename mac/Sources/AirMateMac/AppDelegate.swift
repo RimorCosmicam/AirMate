@@ -287,6 +287,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: hiDPI))
         case .requestIDR:
             encoder?.requestKeyframe()
+        case let .clientDisplay(width, height):
+            model.clientDisplay = (Int(width), Int(height))
         case let .click(x, y):
             guard let displayID = display?.displayID else { return }
             PointerInput.click(x: x, y: y, on: displayID)

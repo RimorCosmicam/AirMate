@@ -1,7 +1,6 @@
 package com.airmate.android
 
 import android.graphics.Color
-import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -165,6 +164,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 syncOverlay()
             }
             sampleRates()
+            reportPanelSize()
             root.postDelayed(this, 500)
         }
     }
@@ -219,7 +219,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         touchInput = TouchInput(this, surface = ::touchSurface, send = ::send)
         root.setOnTouchListener(touchInput)
         onBackPressedDispatcher.addCallback(this, backCallback)
-        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> reserveEdges() }
         setContentView(root)
         syncOverlay()
         root.post(watchStream)
@@ -233,27 +232,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
-    }
-
-    /**
-     * Ask the system to leave the edge strips alone.
-     *
-     * Android caps this at 200dp of height per edge, so it cannot cover the whole side — the back
-     * callback catches whatever falls outside. It matters more now than it did for opening the
-     * menu: a page dragged from near the bezel should scroll, not walk out of the app.
-     */
-    private fun reserveEdges() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        val density = resources.displayMetrics.density
-        val band = (200 * density).toInt()
-        val width = (28 * density).toInt()
-        val top = ((root.height - band) / 2).coerceAtLeast(0)
-        val bottom = (top + band).coerceAtMost(root.height)
-        if (root.width <= 0 || bottom <= top) return
-        root.systemGestureExclusionRects = listOf(
-            Rect(0, top, width, bottom),
-            Rect(root.width - width, top, root.width, bottom)
-        )
     }
 
     private fun enterImmersiveMode() {
@@ -421,6 +399,21 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
+
+    private var reportedPanel = 0 to 0
+
+    /**
+     * Tell the host how big this tablet is, whenever that changes.
+     *
+     * Sent on a change rather than on a timer, and re-sent after a rotation, so the host's own
+     * window can name a size it has no other way of knowing.
+     */
+    private fun reportPanelSize() {
+        val size = root.width to root.height
+        if (size.first <= 0 || size.second <= 0 || size == reportedPanel) return
+        reportedPanel = size
+        send(ControlMessage.clientDisplay(size.first, size.second))
+    }
 
     /**
      * Where the picture is, and how big the host thinks it is.

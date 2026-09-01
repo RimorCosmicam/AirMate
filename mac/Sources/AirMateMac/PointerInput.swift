@@ -13,6 +13,8 @@ import CoreGraphics
 enum PointerInput {
     /// Where the cursor was before the gesture in progress started.
     private static var restore: CGPoint?
+    /// Whether the gesture in progress has already sent its opening event.
+    private static var scrollBegun = false
 
     /// Synthesising events for other applications needs Accessibility, which is a separate grant
     /// from Screen Recording and is refused silently rather than with an error.
@@ -50,12 +52,16 @@ enum PointerInput {
             // Saved once, at the start. Warping on every delta of a flick would make the cursor
             // strobe between two screens for the length of the gesture.
             restore = cursor()
+            scrollBegun = false
             warp(to: target)
         case .continued:
             guard restore != nil else { return }
-            wheel(dx: dx, dy: dy)
+            wheel(dx: dx, dy: dy, phase: scrollBegun ? .changed : .began)
+            scrollBegun = true
         case .ended:
-            if dx != 0 || dy != 0 { wheel(dx: dx, dy: dy) }
+            if dx != 0 || dy != 0 { wheel(dx: dx, dy: dy, phase: scrollBegun ? .changed : .began) }
+            if scrollBegun { wheel(dx: 0, dy: 0, phase: .ended) }
+            scrollBegun = false
             if let origin = restore { warp(to: origin) }
             restore = nil
         }
@@ -64,6 +70,8 @@ enum PointerInput {
     /// Drops any half-finished gesture, so a client that vanishes mid-scroll cannot strand the
     /// cursor on the tablet's display.
     static func reset() {
+        if scrollBegun { wheel(dx: 0, dy: 0, phase: .ended) }
+        scrollBegun = false
         if let origin = restore { warp(to: origin) }
         restore = nil
     }
@@ -101,15 +109,24 @@ enum PointerInput {
         )?.post(tap: .cghidEventTap)
     }
 
-    private static func wheel(dx: Int16, dy: Int16) {
+    /// The phase values macOS uses for a continuous scroll gesture.
+    private enum WheelPhase: Int64 { case began = 1, changed = 2, ended = 4 }
+
+    private static func wheel(dx: Int16, dy: Int16, phase: WheelPhase) {
         // Pixel units rather than lines, so a drag moves the page by the distance the finger moved.
-        CGEvent(
+        guard let event = CGEvent(
             scrollWheelEvent2Source: nil,
             units: .pixel,
             wheelCount: 2,
             wheel1: Int32(dy),
             wheel2: Int32(dx),
             wheel3: 0
-        )?.post(tap: .cghidEventTap)
+        ) else { return }
+        // Without a phase, macOS reads each of these as a separate wheel click and applies none of
+        // the smoothing it gives a trackpad — which is exactly what choppy scrolling looks like.
+        // With one, the run of events is a single continuous gesture.
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase.rawValue)
+        event.post(tap: .cghidEventTap)
     }
 }
