@@ -96,16 +96,22 @@ class UdpVideoReceiver(
                     }
                     packet.length = datagram.size
                     active.receive(packet)
-                    macAddress = packet.address
-                    macPort = packet.port
 
+                    // The host's address is taken only from something the host demonstrably sent.
+                    // Adopting the sender of any datagram at all meant our own broadcast hello,
+                    // arriving back on this socket, could name the tablet itself as the host — and
+                    // every command after that was addressed to nobody and quietly lost.
                     val statusMessage = StatusMessage.parse(datagram, packet.length)
                     if (statusMessage != null) {
+                        macAddress = packet.address
+                        macPort = packet.port
                         onStatus(statusMessage)
                         continue
                     }
 
                     val header = VideoHeader.parse(datagram, packet.length) ?: continue
+                    macAddress = packet.address
+                    macPort = packet.port
                     reassembler.accept(datagram, packet.length, header)?.let { complete ->
                         receivedFrames++
                         decoder.submit(complete.bytes, complete.length, complete.frameId, header.hevc)
