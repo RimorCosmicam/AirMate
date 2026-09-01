@@ -30,7 +30,7 @@ enum class FrameLeniency(
     /** How long to wait for a decoder input buffer before dropping the frame. */
     val decoderWaitMicros: Long
 ) {
-    ACTUAL("Actual", 0, 0),
+    ACTUAL("Default", 0, 0),
     ONE("+16 ms", 1, 2_000),
     TWO("+33 ms", 2, 4_000),
     FOUR("+66 ms", 4, 8_000)
