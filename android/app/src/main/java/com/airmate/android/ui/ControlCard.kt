@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import com.airmate.android.FrameLeniency
 import com.airmate.android.ScreenAxis
+import com.airmate.android.decoder.DecoderLimits
 import com.airmate.android.protocol.StatusMessage
 import com.airmate.android.ui.mont.MontStage
 import com.airmate.android.ui.mont.MontChips
@@ -47,6 +48,10 @@ fun resolutionsFor(panel: Pair<Int, Int>): List<Pair<Int, Int>> =
     listOf(1.0, 0.875, 0.75, 0.625, 0.5)
         .map { scale -> even(panel.first * scale) to even(panel.second * scale) }
         .filter { it.first >= 640 && it.second >= 480 }
+        // Only sizes this device can actually decode. A screen larger than its own decoder is
+        // ordinary — offering its native size then hands the hardware something it answers with
+        // OMX_ErrorHardware, which kills the codec and every frame after it.
+        .filter { DecoderLimits.supports(it.first, it.second) }
         .distinct()
 
 private fun even(value: Double): Int = (value.roundToInt() / 2) * 2

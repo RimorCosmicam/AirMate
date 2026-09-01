@@ -8,7 +8,27 @@ import android.os.Build
 import android.util.Log
 import android.view.Surface
 
-class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1920, private val height: Int = 1080) {
+/**
+ * @param surfaceOf The surface to decode into, asked for afresh each time a codec is built.
+ *
+ * Held rather than asked for, a surface goes stale the moment the view behind it is resized — and
+ * a codec configured against a dead surface accepts the configuration and then throws on the first
+ * frame, for every frame, forever.
+ */
+class LowLatencyDecoder(
+    private val surfaceOf: () -> Surface?,
+    private val width: Int = 1920,
+    private val height: Int = 1080
+) {
+    /**
+     * MediaCodec may be touched by one thread at a time.
+     *
+     * Frames arrive on the network thread while the surface callbacks and teardown run on the main
+     * one, and releasing a codec underneath a thread sitting in `dequeueInputBuffer` throws
+     * IllegalStateException — which then repeats for every frame, because the codec is dead and
+     * whatever rebuilt it raced with the next release too.
+     */
+    private val lock = Any()
     private var codec: MediaCodec? = null
     private var mime: String? = null
     var decodedFrames = 0L; private set
@@ -31,17 +51,17 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
      * configured for the previous one is what faults it.
      */
     fun reset() {
-        close()
+        synchronized(lock) { closeLocked() }
     }
 
-    fun submit(bytes: ByteArray, length: Int, frameId: Long, hevc: Boolean) {
+    fun submit(bytes: ByteArray, length: Int, frameId: Long, hevc: Boolean): Unit = synchronized(lock) {
         val wantedMime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
         if (codec == null || mime != wantedMime) {
             try {
                 configure(wantedMime)
             } catch (error: Exception) {
                 Log.e(TAG, "Could not build a decoder", error)
-                close()
+                closeLocked()
                 droppedFrames++
                 return
             }
@@ -61,24 +81,21 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
             // away; the next access unit builds a new one, and the host's keyframe interval brings
             // the picture back within a couple of seconds.
             Log.e(TAG, "Decoder faulted, rebuilding it", error)
-            close()
+            closeLocked()
             droppedFrames++
         }
     }
 
     private fun configure(wantedMime: String) {
-        close()
+        closeLocked()
         val info = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull { candidate ->
             !candidate.isEncoder && candidate.supportedTypes.any { it.equals(wantedMime, true) } &&
                 !candidate.name.contains("google", true) && !candidate.name.startsWith("c2.android")
         } ?: run { Log.e(TAG, "No hardware decoder for $wantedMime"); return }
+        val surface = surfaceOf() ?: run { Log.e(TAG, "No surface to decode into"); return }
+        if (!surface.isValid) { Log.e(TAG, "Surface is no longer valid"); return }
         val selected = MediaCodec.createByCodecName(info.name)
         val format = MediaFormat.createVideoFormat(wantedMime, width, height)
-        // The stream may come back a different shape after the host rebuilds its display, and a
-        // decoder that has not been told to expect that faults instead of adapting. The numbers are
-        // a ceiling, not a promise.
-        format.setInteger(MediaFormat.KEY_MAX_WIDTH, MAX_DIMENSION)
-        format.setInteger(MediaFormat.KEY_MAX_HEIGHT, MAX_DIMENSION)
         if (Build.VERSION.SDK_INT >= 30) {
             val capabilities = info.getCapabilitiesForType(wantedMime)
             if (capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)) {
@@ -102,14 +119,18 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
     }
 
     fun close() {
+        synchronized(lock) { closeLocked() }
+    }
+
+    private fun closeLocked() {
         try { codec?.stop() } catch (_: Exception) {}
-        codec?.release(); codec = null; mime = null
+        try { codec?.release() } catch (_: Exception) {}
+        codec = null
+        mime = null
     }
 
     companion object {
         private const val TAG = "AirMate.Android.Decoder"
-        /** Largest side the decoder is told to be ready for, so a reshape does not fault it. */
-        private const val MAX_DIMENSION = 4096
     }
 }
 

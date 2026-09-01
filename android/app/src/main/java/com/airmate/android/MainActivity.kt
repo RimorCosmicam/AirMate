@@ -46,6 +46,7 @@ import com.airmate.android.ui.TouchSurface
 import com.airmate.android.ui.OnboardingScreen
 import com.airmate.android.ui.PairingScreen
 import com.airmate.android.ui.StripeBackdrop
+import com.airmate.android.ui.resolutionsFor
 import com.airmate.android.ui.mont.MontSurface
 import com.airmate.android.ui.mont.MontLabel
 import com.google.android.gms.common.moduleinstall.ModuleInstall
@@ -111,6 +112,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
 
         override fun handleOnBackPressed() {
+            Log.d(TAG, "back: card=$cardEdge curtain=$curtainDrawn streaming=$streaming leaving=$leaving onboarded=$onboarded")
             if (cardEdge != null) {
                 cardEdge = null
             } else {
@@ -327,6 +329,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // instead, which is the one outcome it must never have.
         backCallback.isEnabled = onboarded
         val wanted = !onboarded || !streaming || leaving || cardEdge != null || curtainDrawn
+        Log.d(TAG, "overlay: wanted=$wanted mounted=${overlay != null} card=$cardEdge curtain=$curtainDrawn streaming=$streaming leaving=$leaving")
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
             overlay = view
@@ -540,14 +543,17 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val panel = panelSize() ?: return
         val current = status ?: return
         settings.fittedScreen = true
-        if (panel.first == current.width && panel.second == current.height) return
+        // The largest size at this screen's shape that the hardware will actually decode, which on
+        // a panel bigger than its own decoder is not the panel.
+        val fit = resolutionsFor(panel).firstOrNull() ?: return
+        if (fit.first == current.width && fit.second == current.height) return
 
         // Only draw a curtain over a picture that is actually there. Waiting for the stream before
         // fitting meant the screen appeared, was covered to say "Fitting", and came back looking
         // identical — a transition whose entire content was the fact that a transition happened.
         // Done while pairing, the card is already covering it and there is nothing to hide.
-        if (streaming) beginDisplayChange("Fitting", panel.first, panel.second)
-        send(ControlMessage.setDisplay(panel.first, panel.second, hiDPI = true))
+        if (streaming) beginDisplayChange("Fitting", fit.first, fit.second)
+        send(ControlMessage.setDisplay(fit.first, fit.second, hiDPI = true))
     }
 
     /** This screen's own size, in its current orientation, or null before it has been laid out. */
@@ -657,7 +663,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     // MARK: - Surface lifecycle
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        val created = LowLatencyDecoder(holder.surface)
+        // Asked for on demand, so a resize that replaces the surface cannot strand the codec on
+        // the old one.
+        val created = LowLatencyDecoder({ surfaceView.holder.surface })
         decoder = created
         receiver = UdpVideoReceiver(created, onStatus = { message ->
             lastStatusNanos = System.nanoTime()
@@ -672,7 +680,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        // The surface behind the codec has just changed shape. Rebuild against the new one rather
+        // than keep decoding into something that no longer exists.
+        decoder?.reset()
+    }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         receiver?.close()
