@@ -46,12 +46,14 @@ jobs:
           iconutil -c icns dist/AppIcon.iconset -o dist/AirMate.app/Contents/Resources/AppIcon.icns
           cp .build/debug/AirMateMac dist/AirMate.app/Contents/MacOS/AirMate
           cp Resources/Info.plist dist/AirMate.app/Contents/Info.plist
+          cp Resources/Fonts/mont_thin.ttf Resources/Fonts/mont_black.ttf dist/AirMate.app/Contents/Resources/
           cp ../build-artifacts/android/app-debug.apk dist/AirMate.app/Contents/Resources/AirMate.apk
           codesign --force --deep --sign - --requirements '=designated => identifier "com.airmate.mac"' dist/AirMate.app
           codesign --verify --deep --strict dist/AirMate.app
           codesign -d -r- dist/AirMate.app 2>&1 | grep -F 'designated => identifier "com.airmate.mac"'
           test -x dist/AirMate.app/Contents/MacOS/AirMate
           test -f dist/AirMate.app/Contents/Resources/AirMate.apk
+          test -f dist/AirMate.app/Contents/Resources/mont_black.ttf
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' dist/AirMate.app/Contents/Info.plist)" = "AirMate"
           ditto -c -k --sequesterRsrc --keepParent dist/AirMate.app dist/AirMate-macOS-arm64.zip
       - uses: actions/upload-artifact@v4

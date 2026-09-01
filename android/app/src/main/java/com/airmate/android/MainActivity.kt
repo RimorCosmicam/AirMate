@@ -2,97 +2,125 @@ package com.airmate.android
 
 import android.graphics.Color
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.view.View
-import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.airmate.android.decoder.LowLatencyDecoder
-import com.airmate.android.network.UdpVideoReceiver
 import com.airmate.android.network.PairingCode
+import com.airmate.android.network.UdpVideoReceiver
+import com.airmate.android.protocol.ControlMessage
+import com.airmate.android.protocol.StatusMessage
+import com.airmate.android.ui.AspectSurfaceView
+import com.airmate.android.ui.CardEdge
+import com.airmate.android.ui.ControlCard
+import com.airmate.android.ui.EdgeGestureDetector
+import com.airmate.android.ui.OnboardingScreen
+import com.airmate.android.ui.PairingScreen
+import com.airmate.android.ui.StripeBackdrop
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
+/**
+ * The whole client.
+ *
+ * While pairing there is a Mont card over moving stripes. The moment video arrives the stripes
+ * part to reveal the stream already running behind them, and then every bit of that — the card,
+ * the animation, the Compose view itself — is taken out of the hierarchy, so what remains on the
+ * device is a surface and a decoder. An inward swipe from either edge brings the controls back on
+ * the side it came from.
+ */
 class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
-    private lateinit var surfaceView: SurfaceView
-    private lateinit var waitingPanel: LinearLayout
-    private lateinit var statusLabel: TextView
+    private lateinit var settings: AirMateSettings
+    private lateinit var surfaceView: AspectSurfaceView
+    private lateinit var root: FrameLayout
+    private var overlay: ComposeView? = null
     private var decoder: LowLatencyDecoder? = null
     private var receiver: UdpVideoReceiver? = null
+
+    private var status by mutableStateOf<StatusMessage?>(null)
+    private var streaming by mutableStateOf(false)
+    private var everStreamed by mutableStateOf(false)
+    private var scanning by mutableStateOf(false)
+    private var scanError by mutableStateOf<String?>(null)
+    private var cardEdge by mutableStateOf<CardEdge?>(null)
+    private var leaving by mutableStateOf(false)
+    private var onboarded by mutableStateOf(false)
+    private var axis by mutableStateOf(ScreenAxis.HORIZONTAL)
+    private var leniency by mutableStateOf(FrameLeniency.ACTUAL)
+
     private var pairingHost: String? = null
     private var pairingPort = 48620
 
-    private val updateConnectionState = object : Runnable {
+    private val watchStream = object : Runnable {
         override fun run() {
-            val connected = (receiver?.receivedFrames ?: 0) > 0
-            waitingPanel.visibility = if (connected) View.GONE else View.VISIBLE
-            statusLabel.text = if (pairingHost == null) {
-                "Open AirMate on your Mac, or scan its pairing code."
-            } else {
-                "Connecting to your Mac…"
+            val frames = receiver?.receivedFrames ?: 0
+            if (frames > 0 && !streaming) {
+                streaming = true
+                everStreamed = true
+                leaving = true
+            } else if (frames == 0L && streaming) {
+                streaming = false
+                leaving = false
+                syncOverlay()
             }
-            waitingPanel.postDelayed(this, 500)
+            root.postDelayed(this, 500)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        settings = AirMateSettings(this)
+        onboarded = settings.onboarded
+        axis = settings.axis
+        leniency = settings.leniency
+        requestedOrientation = axis.requested
+
         enterImmersiveMode()
         window.decorView.keepScreenOn = true
-        surfaceView = SurfaceView(this).also { it.holder.addCallback(this) }
 
-        val title = TextView(this).apply {
-            text = "AirMate"
-            textSize = 30f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-        }
-        statusLabel = TextView(this).apply {
-            textSize = 16f
-            setTextColor(0xFFB8BDC7.toInt())
-            gravity = Gravity.CENTER
-        }
-        val scanButton = Button(this).apply {
-            text = "Scan Mac Pairing Code"
-            setOnClickListener { scanPairingCode() }
-        }
-        waitingPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(56, 40, 56, 40)
-            setBackgroundColor(0xE612151B.toInt())
-            addView(title)
-            addView(statusLabel, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 14 })
-            addView(scanButton, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 26 })
-        }
-
-        val root = FrameLayout(this)
-        root.addView(surfaceView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        root.addView(waitingPanel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
+        surfaceView = AspectSurfaceView(this).also { it.holder.addCallback(this) }
+        root = FrameLayout(this)
+        root.setBackgroundColor(Color.BLACK)
+        root.addView(
+            surfaceView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+        root.setOnTouchListener(EdgeGestureDetector(this) { edge ->
+            if (streaming) {
+                cardEdge = edge
+                syncOverlay()
+            }
+        })
         setContentView(root)
-        waitingPanel.post(updateConnectionState)
+        syncOverlay()
+        root.post(watchStream)
     }
 
     override fun onResume() {
@@ -111,41 +139,184 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())
         }
-
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
+    // MARK: - The overlay, which exists only when it has something to say
+
+    /**
+     * Add or remove the Compose view.
+     *
+     * This is the whole point of the design: once the stream is live and no card is open there is
+     * no Compose view in the hierarchy at all, so nothing composes, animates or invalidates behind
+     * the video.
+     */
+    private fun syncOverlay() {
+        val wanted = !streaming || leaving || cardEdge != null
+        if (wanted && overlay == null) {
+            val view = ComposeView(this).apply { setContent { Overlay() } }
+            overlay = view
+            root.addView(
+                view,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        } else if (!wanted && overlay != null) {
+            root.removeView(overlay)
+            overlay?.disposeComposition()
+            overlay = null
+        }
+    }
+
+    @Composable
+    private fun Overlay() {
+        // The ground parts along the bands' own axis, revealing the stream already running behind
+        // it. The card goes first, and faster than the ground it is standing on.
+        val journey by animateFloatAsState(
+            targetValue = if (leaving) 1f else 0f,
+            animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
+            label = "journey",
+            finishedListener = { if (it == 1f) syncOverlay() }
+        )
+
+        Box(Modifier.fillMaxSize()) {
+            if (!streaming || leaving) {
+                StripeBackdrop(split = journey, disconnected = everStreamed && !streaming)
+            }
+            Box(Modifier.alpha(1f - (journey / 0.22f).coerceAtMost(1f))) {
+                val edge = cardEdge
+                when {
+                    edge != null -> ControlCard(
+                        edge = edge,
+                        status = status,
+                        axis = axis,
+                        leniency = leniency,
+                        onStartStop = { start ->
+                            send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
+                        },
+                        onResolution = { width, height ->
+                            send(ControlMessage.setDisplay(width, height, status?.hiDPI ?: true))
+                        },
+                        onHiDPI = { hiDPI ->
+                            val current = status
+                            send(
+                                ControlMessage.setDisplay(
+                                    current?.width ?: 1920,
+                                    current?.height ?: 1080,
+                                    hiDPI
+                                )
+                            )
+                        },
+                        onAxis = ::applyAxis,
+                        onLeniency = ::applyLeniency,
+                        onRequestKeyframe = { send(ControlMessage.simple(ControlMessage.TYPE_REQUEST_IDR)) },
+                        onDismiss = { cardEdge = null; syncOverlay() }
+                    )
+                    !onboarded -> OnboardingScreen(
+                        scanning = scanning,
+                        scanError = scanError,
+                        onScan = ::scanPairingCode,
+                        onFinished = {
+                            settings.onboarded = true
+                            onboarded = true
+                        }
+                    )
+                    else -> PairingScreen(
+                        paired = pairingHost != null || status != null,
+                        scanning = scanning,
+                        scanError = scanError,
+                        disconnected = everStreamed && !streaming,
+                        onScan = ::scanPairingCode
+                    )
+                }
+            }
+        }
+    }
+
+    private fun applyAxis(next: ScreenAxis) {
+        axis = next
+        settings.axis = next
+        requestedOrientation = next.requested
+    }
+
+    private fun applyLeniency(next: FrameLeniency) {
+        leniency = next
+        settings.leniency = next
+        receiver?.leniency = next
+    }
+
+    private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
+
+    // MARK: - Pairing
+
+    /**
+     * Open the Play services code scanner.
+     *
+     * The module it needs is optional and is fetched at install time from the manifest's
+     * `com.google.mlkit.vision.DEPENDENCIES` — but only for an app installed through Play. AirMate
+     * is sideloaded, so that never happens and `startScan` fails immediately without ever opening
+     * the camera. Asking for the module explicitly is what makes the scanner work on a build
+     * people downloaded themselves.
+     */
     private fun scanPairingCode() {
-        val options = GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-            .enableAutoZoom()
-            .build()
-        GmsBarcodeScanning.getClient(this, options).startScan()
+        if (scanning) return
+        scanning = true
+        scanError = null
+
+        val scanner = GmsBarcodeScanning.getClient(
+            this,
+            GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .enableAutoZoom()
+                .build()
+        )
+        ModuleInstall.getClient(this)
+            .installModules(ModuleInstallRequest.newBuilder().addApi(scanner).build())
+            .addOnSuccessListener { startScan(scanner) }
+            .addOnFailureListener { error ->
+                scanning = false
+                scanError = "Scanner unavailable: ${error.message ?: error.javaClass.simpleName}. Same Wi‑Fi still works."
+                Log.e(TAG, "Code scanner module install failed", error)
+            }
+    }
+
+    private fun startScan(scanner: GmsBarcodeScanner) {
+        scanner.startScan()
             .addOnSuccessListener { barcode ->
+                scanning = false
                 val target = barcode.rawValue?.let(PairingCode::parse)
                 if (target == null) {
-                    Toast.makeText(this, "That isn’t an AirMate pairing code.", Toast.LENGTH_LONG).show()
+                    scanError = "That isn't an AirMate pairing code."
                     return@addOnSuccessListener
                 }
+                scanError = null
                 pairingHost = target.host
                 pairingPort = target.port
                 receiver?.pairWith(target.host, target.port)
             }
-            .addOnFailureListener {
-                Toast.makeText(this, "Couldn’t open the QR scanner.", Toast.LENGTH_LONG).show()
+            .addOnCanceledListener { scanning = false }
+            .addOnFailureListener { error ->
+                scanning = false
+                // The real reason, not a generic apology. The previous build swallowed this and
+                // left nothing to diagnose from.
+                scanError = error.message ?: error.javaClass.simpleName
+                Log.e(TAG, "startScan failed", error)
             }
     }
 
+    // MARK: - Surface lifecycle
+
     override fun surfaceCreated(holder: SurfaceHolder) {
-        decoder = LowLatencyDecoder(holder.surface)
-        receiver = UdpVideoReceiver(decoder!!).also { active ->
+        val created = LowLatencyDecoder(holder.surface)
+        decoder = created
+        receiver = UdpVideoReceiver(created, onStatus = { message ->
+            runOnUiThread {
+                status = message
+                surfaceView.setAspect(message.width, message.height)
+            }
+        }).also { active ->
+            active.leniency = leniency
             pairingHost?.let { active.pairWith(it, pairingPort) }
             active.start()
         }
@@ -161,9 +332,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
-        waitingPanel.removeCallbacks(updateConnectionState)
+        root.removeCallbacks(watchStream)
         receiver?.close()
         decoder?.close()
         super.onDestroy()
     }
+
+    private companion object { const val TAG = "AirMate.Android" }
 }

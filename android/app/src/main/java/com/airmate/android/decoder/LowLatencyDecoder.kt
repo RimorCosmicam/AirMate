@@ -14,11 +14,20 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
     var decodedFrames = 0L; private set
     var droppedFrames = 0L; private set
 
+    /**
+     * How long to wait for a decoder input buffer before dropping the frame.
+     *
+     * Zero is the original behaviour: if hardware decode is busy this instant the access unit is
+     * dropped rather than queued in application memory. A short wait trades latency for keeping
+     * frames the decoder was only momentarily too busy to take.
+     */
+    @Volatile var waitMicros: Long = 0
+
     fun submit(bytes: ByteArray, length: Int, frameId: Long, hevc: Boolean) {
         val wantedMime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
         if (codec == null || mime != wantedMime) configure(wantedMime)
         val active = codec ?: run { droppedFrames++; return }
-        val index = active.dequeueInputBuffer(0)
+        val index = active.dequeueInputBuffer(waitMicros)
         if (index < 0) { droppedFrames++; return }
         val input = active.getInputBuffer(index) ?: run { droppedFrames++; return }
         if (length > input.capacity()) { active.queueInputBuffer(index, 0, 0, 0, 0); droppedFrames++; return }

@@ -15,6 +15,7 @@ final class LatestFrameEncoder: @unchecked Sendable {
     private var session: VTCompressionSession?
     private var encoding = false
     private var pending: CapturedFrame?
+    private var forceKeyframe = false
     private let sender: UDPSender
     private let width: Int32
     private let height: Int32
@@ -26,6 +27,15 @@ final class LatestFrameEncoder: @unchecked Sendable {
         self.sender = sender
         self.hevc = preferHEVC
         try createSession()
+    }
+
+    /// Ask for the next encoded frame to be an IDR.
+    ///
+    /// There is no retransmission, so a client that has lost part of a reference frame stays
+    /// broken until the next scheduled keyframe — up to two seconds at this GOP. This is how it
+    /// asks for one sooner.
+    func requestKeyframe() {
+        stateLock.withLock { forceKeyframe = true }
     }
 
     func submit(_ frame: CapturedFrame) {
@@ -75,10 +85,18 @@ final class LatestFrameEncoder: @unchecked Sendable {
         let metadata = FrameMetadata(id: frame.id, captureNanos: frame.captureNanos)
         let refcon = Unmanaged.passRetained(metadata).toOpaque()
         var flags = VTEncodeInfoFlags()
+        let forced = stateLock.withLock {
+            let wanted = forceKeyframe
+            forceKeyframe = false
+            return wanted
+        }
+        let properties = forced
+            ? [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue] as CFDictionary
+            : nil
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: frame.pixelBuffer,
             presentationTimeStamp: CMTime(value: CMTimeValue(frame.id), timescale: 60),
-            duration: CMTime(value: 1, timescale: 60), frameProperties: nil,
+            duration: CMTime(value: 1, timescale: 60), frameProperties: properties,
             sourceFrameRefcon: refcon, infoFlagsOut: &flags
         )
         if status != noErr {

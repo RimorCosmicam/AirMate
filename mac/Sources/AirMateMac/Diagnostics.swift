@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-struct StreamSnapshot: Sendable {
+struct StreamSnapshot: Sendable, Equatable {
     var captured: UInt64 = 0
     var submitted: UInt64 = 0
     var encoded: UInt64 = 0

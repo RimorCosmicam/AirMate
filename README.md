@@ -1,39 +1,78 @@
+<img src="AirMate.png" width="88" alt="AirMate">
+
 # AirMate
 
-AirMate is a native macOS-to-Android extended display prototype. The Mac creates a real virtual display, captures only that display, hardware-encodes it with VideoToolbox, and sends bounded, non-retransmitted UDP video to an Android `MediaCodec` decoder rendering directly into a `SurfaceView`.
+Your tablet, doing something useful.
+
+AirMate turns an Android tablet into a real second display for your Mac — a
+proper monitor macOS can see and arrange, not a mirror of a window.
+
+Built for the Galaxy Tab A7 and anything like it.
+
+## What it does
+
+- **A real display** — the Mac creates an actual virtual monitor and only
+  captures that one, so your own screen is never recorded and never sent.
+- **Finds itself** — put both on the same Wi‑Fi and they pair on their own.
+  There is a QR code on the Mac if you want to skip the search.
+- **Gets out of the way** — the moment the picture arrives the interface parts
+  down the middle and is taken off the device entirely. What is left is a
+  decoder and a surface.
+- **Comes back with a swipe** — pull in from either edge and the Mac's own
+  controls open on that side: start and stop, resolution, HiDPI, how the tablet
+  is allowed to rotate, and how hard to try before dropping a frame.
+- **Turns the way you want** — auto-rotates within one axis at a time, so it
+  never half-turns into the other shape while you are reading.
+
+Hardware encode on the Mac, hardware decode on the tablet, and nothing in
+between that waits: the picture on screen is always the newest one that arrived.
+
+## Setting the Mac's controls from the tablet
+
+The tablet can drive the Mac, but only once you say so. The first time it asks,
+the Mac's window offers to allow it, and until someone presses that nothing the
+tablet sends changes anything.
+
+## Building
+
+Everything is built by GitHub Actions — the macOS app and the Android APK, with
+the APK bundled inside the `.app` so the Mac can hand it to you. Push and take
+the artifacts from the run, or start the workflow by hand.
+
+```
+gh run download <run-id> -R RimorCosmicam/AirMate -n airmate-android-debug
+```
+
+On macOS, unzip the archive, move `AirMate.app` into Applications, then
+Control-click it and choose **Open** the first time. Approve Screen Recording
+when macOS asks, and restart AirMate so the grant takes effect. The build is
+ad-hoc signed, not notarized.
+
+## Before you use it
 
 > [!WARNING]
-> `CGVirtualDisplay` is a private CoreGraphics API. It is isolated in `mac/Sources/AirMatePrivateCG` so it can be replaced without changing the capture, encoder, transport, or UI layers. A build using this API is not eligible for the Mac App Store.
+> `CGVirtualDisplay` is a private CoreGraphics API. It is isolated in
+> `mac/Sources/AirMatePrivateCG` so it can be replaced without touching capture,
+> encoding, transport or UI — but a build using it cannot go to the Mac App
+> Store.
 
-## Repository
+> [!WARNING]
+> Nothing on the wire is encrypted or authenticated yet. Anyone on the same
+> network can receive the video. Use this on a network you trust, and read
+> `docs/SECURITY.md` before you use it anywhere else.
 
-- `mac/` — Swift/AppKit menu-bar host, virtual display, `CGDisplayStream`, VideoToolbox, UDP sender
-- `android/` — Kotlin Android client, UDP reassembly, hardware `MediaCodec`, direct `SurfaceView`
-- `protocol/` — versioned wire protocol
-- `docs/` — architecture, security boundaries, and test plans
-- `.github/workflows/ci.yml` — GitHub-hosted macOS and Android builds
+## Under the hood
 
-## Current vertical slice
+- `mac/` — Swift menu-bar host, virtual display, ScreenCaptureKit, VideoToolbox,
+  UDP sender; SwiftUI window
+- `android/` — Kotlin client, UDP reassembly, `MediaCodec`, `SurfaceView`;
+  Compose overlay
+- `protocol/` — the wire format, video and control
+- `docs/` — architecture, security boundaries, test plan
 
-1. Launch AirMate on the Mac.
-2. Choose **Start Display** from the menu bar. AirMate creates a 1920x1080 virtual display and listens for a client hello on UDP port 48620.
-3. Launch the Android app on the same LAN. It automatically broadcasts a hello and listens for video.
-4. Arrange **AirMate Display** in macOS Display Settings.
+Both clients are drawn in Mont: black at 92%, square corners, and one typeface
+doing the work that borders and shadows used to.
 
-Every latency-sensitive boundary is bounded. Capture allows one VideoToolbox submission and one replaceable pending pixel buffer. UDP sends are non-blocking and an access unit is abandoned on backpressure. Android keeps one reusable reassembly slot and discards an incomplete frame when a newer frame appears.
-
-The first milestone intentionally does not claim production security: the discovery hello is unauthenticated and streaming is not yet encrypted. See `docs/SECURITY.md`. Do not use this build on an untrusted LAN.
-
-## Builds
-
-Builds run on GitHub Actions. The workflow uses a GitHub-hosted macOS toolchain for the Swift package and an Ubuntu runner for Android. No checked-in secrets or signing identities are required for debug compilation.
-
-Each successful workflow publishes two test artifacts: `AirMate-macOS-arm64.zip` containing an ad-hoc-signed `.app` for Apple Silicon, and `app-debug.apk` for Android. Tagged prereleases copy these into the GitHub Releases page for straightforward installation.
-
-## Installing test builds
-
-On macOS, unzip the archive, move `AirMate.app` into Applications, then Control-click it and choose **Open** the first time. Approve any Screen Recording permission macOS requests. This development build is ad-hoc signed, not notarized.
-
-AirMate opens a visible window on first launch and also shows an icon-only menu-bar item. Closing the window leaves the menu-bar service running. Choose **Quit AirMate** from that menu when you want to remove or replace the app.
-
-On Android, download `app-debug.apk`, allow installation from the browser or file manager when prompted, and install it. The current vertical slice uses a UDP LAN bootstrap rather than production pairing, so both devices must be on the same isolated/trusted Wi-Fi network.
+> Mont is a commercial typeface from Fontfabric and is bundled in both clients.
+> Check the licence covers redistribution before publishing a release built from
+> this tree.
