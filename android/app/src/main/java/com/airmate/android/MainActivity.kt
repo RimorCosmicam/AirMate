@@ -188,10 +188,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 troubledSince = 0L
                 syncOverlay()
             }
+            if (decoder?.needsKeyframe == true) {
+                decoder?.keyframeRequested()
+                send(ControlMessage.simple(ControlMessage.TYPE_REQUEST_IDR))
+            }
             sampleRates()
             reportPanelSize()
             settleCurtain(now)
-            fitScreenOnce()
             root.postDelayed(this, 500)
         }
     }
@@ -534,24 +537,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
 
     private var reportedPanel = 0 to 0
-
-    /**
-     * Ask the host to match this screen, once, the first time a tablet ever gets a picture.
-     *
-     * Any size that is not exactly this panel letterboxes, and a tablet arriving for the first time
-     * should simply fit rather than requiring someone to find the menu. It happens once and is
-     * remembered: matching rebuilds the host's display, and doing that unasked every time a tablet
-     * reconnects would move the user's windows for them.
-     */
-    private fun fitScreenOnce() {
-        if (settings.fittedScreen || !onboarded || !streaming || curtainDrawn) return
-        val panel = panelSize() ?: return
-        val current = status ?: return
-        settings.fittedScreen = true
-        if (panel.first == current.width && panel.second == current.height) return
-        beginDisplayChange("Fitting", panel.first, panel.second)
-        send(ControlMessage.setDisplay(panel.first, panel.second, current.hiDPI))
-    }
 
     /** This tablet's own panel, in its current orientation, or null before it has been laid out. */
     private fun panelSize(): Pair<Int, Int>? {

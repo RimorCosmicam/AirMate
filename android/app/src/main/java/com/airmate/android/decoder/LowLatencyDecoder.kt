@@ -23,17 +23,38 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
      */
     @Volatile var waitMicros: Long = 0
 
+    /**
+     * True when the codec has been thrown away and the next access unit will rebuild it.
+     *
+     * The rebuilt codec has no reference frames, so whatever arrives next is undecodable until a
+     * keyframe does. The caller watches this so it can ask for one.
+     */
+    @Volatile var needsKeyframe = false
+        private set
+
+    fun keyframeRequested() { needsKeyframe = false }
+
     fun submit(bytes: ByteArray, length: Int, frameId: Long, hevc: Boolean) {
         val wantedMime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
         if (codec == null || mime != wantedMime) configure(wantedMime)
         val active = codec ?: run { droppedFrames++; return }
-        val index = active.dequeueInputBuffer(waitMicros)
-        if (index < 0) { droppedFrames++; return }
-        val input = active.getInputBuffer(index) ?: run { droppedFrames++; return }
-        if (length > input.capacity()) { active.queueInputBuffer(index, 0, 0, 0, 0); droppedFrames++; return }
-        input.clear(); input.put(bytes, 0, length)
-        active.queueInputBuffer(index, 0, length, frameId * 1_000_000L / 60L, 0)
-        drain(active)
+        try {
+            val index = active.dequeueInputBuffer(waitMicros)
+            if (index < 0) { droppedFrames++; return }
+            val input = active.getInputBuffer(index) ?: run { droppedFrames++; return }
+            if (length > input.capacity()) { active.queueInputBuffer(index, 0, 0, 0, 0); droppedFrames++; return }
+            input.clear(); input.put(bytes, 0, length)
+            active.queueInputBuffer(index, 0, length, frameId * 1_000_000L / 60L, 0)
+            drain(active)
+        } catch (error: IllegalStateException) {
+            // A codec in an error state throws for every frame from then on, so leaving it in place
+            // ends video for the rest of the session. A resolution change is enough to cause it.
+            // Throw it away and let the next access unit build a new one.
+            Log.e(TAG, "Decoder faulted, rebuilding it", error)
+            close()
+            droppedFrames++
+            needsKeyframe = true
+        }
     }
 
     private fun configure(wantedMime: String) {
