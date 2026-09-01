@@ -18,16 +18,13 @@ AMVirtualDisplayHandle _Nullable AMVirtualDisplayCreate(
     CGDirectDisplayID * _Nonnull displayID,
     const char * _Nullable * _Nonnull errorMessage
 );
-/// Change a live display's mode in place, keeping its display ID.
+/// Rotate a live display, keeping its ID, its mode and the windows on it.
 ///
-/// Destroying and recreating the display strands whatever windows were on it and hands macOS a
-/// different display ID, so the arrangement is lost as well. Re-applying settings keeps both.
-bool AMVirtualDisplayApplyMode(
+/// `CGVirtualDisplaySettings` carries a rotation independently of the display's modes. Changing the
+/// mode of a running display is a reconfiguration that macOS refuses; rotating it is not.
+bool AMVirtualDisplaySetRotation(
     AMVirtualDisplayHandle _Nonnull handle,
-    uint32_t width,
-    uint32_t height,
-    double refreshRate,
-    bool hiDPI,
+    uint32_t degrees,
     const char * _Nullable * _Nonnull errorMessage
 );
 void AMVirtualDisplayDestroy(AMVirtualDisplayHandle _Nullable handle);
