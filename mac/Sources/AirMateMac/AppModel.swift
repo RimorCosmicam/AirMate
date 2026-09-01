@@ -5,7 +5,22 @@ struct DisplayConfiguration: Equatable, Sendable {
     let height: Int
     var hiDPI: Bool
 
+    /// Fallback sizes, used only until the client says how big it is.
     static let resolutions = [(1280, 800), (1920, 1080), (1920, 1200)]
+
+    /// Five sizes at the client's own shape, evenly spaced from all of it down to half.
+    ///
+    /// The same derivation the client makes, so the two windows offer the same list rather than
+    /// each proposing shapes the other does not recognise. Sides are rounded to even numbers,
+    /// which every encoder wants and which moves the shape by less than a pixel.
+    static func choices(fitting panel: (width: Int, height: Int)?) -> [(Int, Int)] {
+        guard let panel, panel.width > 0, panel.height > 0 else { return resolutions }
+        func even(_ value: Double) -> Int { Int((value / 2).rounded()) * 2 }
+        let derived = [1.0, 0.875, 0.75, 0.625, 0.5].map { scale in
+            (even(Double(panel.width) * scale), even(Double(panel.height) * scale))
+        }.filter { $0.0 >= 640 && $0.1 >= 480 }
+        return derived.isEmpty ? resolutions : derived
+    }
     var resolutionLabel: String { "\(width) × \(height)" }
 }
 
@@ -66,6 +81,11 @@ final class AppModel: ObservableObject {
         case .connected, .connectingVideo, .waitingForAndroid: return true
         default: return false
         }
+    }
+
+    /// The sizes this window offers, tailored to the client once it has said how big it is.
+    var resolutionChoices: [(Int, Int)] {
+        DisplayConfiguration.choices(fitting: clientDisplay)
     }
 
     var pairingURL: String? {

@@ -23,9 +23,29 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
      */
     @Volatile var waitMicros: Long = 0
 
+    /**
+     * Throw the codec away so the next access unit builds a fresh one.
+     *
+     * Called when the host starts a new session — a rebuilt display, a resolution change, a HiDPI
+     * toggle. The stream that follows has its own parameter sets, and handing those to a codec
+     * configured for the previous one is what faults it.
+     */
+    fun reset() {
+        close()
+    }
+
     fun submit(bytes: ByteArray, length: Int, frameId: Long, hevc: Boolean) {
         val wantedMime = if (hevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
-        if (codec == null || mime != wantedMime) configure(wantedMime)
+        if (codec == null || mime != wantedMime) {
+            try {
+                configure(wantedMime)
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not build a decoder", error)
+                close()
+                droppedFrames++
+                return
+            }
+        }
         val active = codec ?: run { droppedFrames++; return }
         try {
             val index = active.dequeueInputBuffer(waitMicros)
@@ -35,7 +55,7 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
             input.clear(); input.put(bytes, 0, length)
             active.queueInputBuffer(index, 0, length, frameId * 1_000_000L / 60L, 0)
             drain(active)
-        } catch (error: IllegalStateException) {
+        } catch (error: Exception) {
             // Once MediaCodec faults it throws for every frame from then on, so leaving it in place
             // ends video for the rest of the session — which is what turning HiDPI off did. Throw it
             // away; the next access unit builds a new one, and the host's keyframe interval brings
@@ -54,6 +74,11 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
         } ?: run { Log.e(TAG, "No hardware decoder for $wantedMime"); return }
         val selected = MediaCodec.createByCodecName(info.name)
         val format = MediaFormat.createVideoFormat(wantedMime, width, height)
+        // The stream may come back a different shape after the host rebuilds its display, and a
+        // decoder that has not been told to expect that faults instead of adapting. The numbers are
+        // a ceiling, not a promise.
+        format.setInteger(MediaFormat.KEY_MAX_WIDTH, MAX_DIMENSION)
+        format.setInteger(MediaFormat.KEY_MAX_HEIGHT, MAX_DIMENSION)
         if (Build.VERSION.SDK_INT >= 30) {
             val capabilities = info.getCapabilitiesForType(wantedMime)
             if (capabilities.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency)) {
@@ -81,6 +106,10 @@ class LowLatencyDecoder(private val surface: Surface, private val width: Int = 1
         codec?.release(); codec = null; mime = null
     }
 
-    companion object { private const val TAG = "AirMate.Android.Decoder" }
+    companion object {
+        private const val TAG = "AirMate.Android.Decoder"
+        /** Largest side the decoder is told to be ready for, so a reshape does not fault it. */
+        private const val MAX_DIMENSION = 4096
+    }
 }
 

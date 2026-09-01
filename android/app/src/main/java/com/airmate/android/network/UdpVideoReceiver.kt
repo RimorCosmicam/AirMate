@@ -36,6 +36,9 @@ class UdpVideoReceiver(
 
     var receivedFrames = 0L; private set
 
+    /** The session the decoder is currently configured for. */
+    private var decodingSession = 0L
+
     /** Frames the reassembler gave up on, part-built. */
     val abandonedFrames: Long get() = reassembler.abandoned
 
@@ -112,6 +115,15 @@ class UdpVideoReceiver(
                     val header = VideoHeader.parse(datagram, packet.length) ?: continue
                     macAddress = packet.address
                     macPort = packet.port
+
+                    // A new session is a new display: rebuilt, resized, or its HiDPI changed. The
+                    // stream that follows carries its own parameter sets, and feeding those to a
+                    // codec configured for the previous one faults it for good — which is why the
+                    // picture froze until the app was restarted.
+                    if (header.sessionId != decodingSession) {
+                        decodingSession = header.sessionId
+                        decoder.reset()
+                    }
                     reassembler.accept(datagram, packet.length, header)?.let { complete ->
                         receivedFrames++
                         decoder.submit(complete.bytes, complete.length, complete.frameId, header.hevc)

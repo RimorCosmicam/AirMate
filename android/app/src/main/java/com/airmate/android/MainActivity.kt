@@ -406,6 +406,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         leniency = leniency,
                         fps = fps,
                         dropPercent = dropPercent,
+                        panel = panelSize(),
                         onStartStop = { start ->
                             send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
                         },
@@ -517,6 +518,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
 
     private var reportedPanel = 0 to 0
+
+    /** This screen's own size, in its current orientation, or null before it has been laid out. */
+    private fun panelSize(): Pair<Int, Int>? {
+        val size = root.width to root.height
+        return if (size.first > 0 && size.second > 0) size else null
+    }
 
     /**
      * Tell the host how big this tablet is, whenever that changes.
