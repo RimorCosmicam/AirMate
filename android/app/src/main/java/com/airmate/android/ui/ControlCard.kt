@@ -111,7 +111,7 @@ fun ControlCard(
             // anything that is not exactly this one letterboxes — which is the black band down the
             // sides, and no amount of window handling removes it.
             val options = buildList {
-                panel?.let { add(it to "Fit tablet") }
+                panel?.let { add(it to "Fit screen") }
                 oriented.forEach { add(it to "${it.first} × ${it.second}") }
                 running?.let { add(it to "${it.first} × ${it.second}") }
             }.distinctBy { it.first }
