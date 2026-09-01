@@ -29,6 +29,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var permissionSettingsOpened = false
     private var lastError: String?
 
+    /// The configuration a display is actually running at, as opposed to the one last asked for.
+    ///
+    /// These diverge for as long as a restart takes, and permanently if one fails. Publishing the
+    /// requested size instead told the client the display had already changed shape, so it set its
+    /// surface to a shape the video did not have — stretching the picture and putting every touch
+    /// in the wrong place.
+    private var runningConfiguration: DisplayConfiguration?
+
+    /// The last configuration that actually started, to fall back to when a new one will not.
+    private var lastGoodConfiguration: DisplayConfiguration?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         MontFont.register()
         if let icon = Bundle.main.image(forResource: "AppIcon") {
@@ -145,11 +156,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Tell the tablet what this Mac is doing, so its control card can describe a display that is
     /// stopped and sending no video.
     private func publishStatus() {
+        // Only ever what is actually running. A client cannot tell a promise from a fact, and has to
+        // shape its surface and its touches around one of them.
+        let live = runningConfiguration
         sender?.sendStatus(
-            running: display != nil,
-            hiDPI: model.configuration.hiDPI,
-            width: model.configuration.width,
-            height: model.configuration.height,
+            running: live != nil,
+            hiDPI: live?.hiDPI ?? model.configuration.hiDPI,
+            width: live?.width ?? model.configuration.width,
+            height: live?.height ?? model.configuration.height,
             encodedFrames: Diagnostics.shared.snapshot().encoded
         )
     }
@@ -206,6 +220,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         refreshUI()
 
+        // Captured once so every piece of the pipeline, and the status the client is told, agree
+        // on one size even if the model changes underneath them mid-start.
+        let configuration = model.configuration
         do {
             let sender = try UDPSender()
             sender.onCommand = { [weak self] command in self?.perform(command) }
@@ -213,19 +230,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // there is no retransmission for it to ask with. Give it one immediately.
             sender.onClientChanged = { [weak self] in self?.encoder?.requestKeyframe() }
             let display = try CoreGraphicsVirtualDisplayBackend(
-                width: UInt32(model.configuration.width),
-                height: UInt32(model.configuration.height),
-                hiDPI: model.configuration.hiDPI
+                width: UInt32(configuration.width),
+                height: UInt32(configuration.height),
+                hiDPI: configuration.hiDPI
             )
             let encoder = try LatestFrameEncoder(
-                width: Int32(model.configuration.width),
-                height: Int32(model.configuration.height),
+                width: Int32(configuration.width),
+                height: Int32(configuration.height),
                 sender: sender
             )
             let capture = DisplayCapture(
                 displayID: display.displayID,
-                width: model.configuration.width,
-                height: model.configuration.height,
+                width: configuration.width,
+                height: configuration.height,
                 encoder: encoder
             )
             self.sender = sender
@@ -238,13 +255,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     try await capture.start()
                     guard self?.capture === capture else { return }
                     self?.startingDisplay = false
+                    self?.runningConfiguration = configuration
+                    self?.lastGoodConfiguration = configuration
                     Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
                     self?.refreshUI()
                 } catch {
-                    guard self?.capture === capture else { return }
-                    self?.lastError = error.localizedDescription
-                    self?.tearDownDisplay()
-                    self?.refreshUI()
+                    guard let self, self.capture === capture else { return }
+                    self.tearDownDisplay()
+                    // A shape this Mac will not make — a portrait display it cannot mode-set, say —
+                    // should not leave the screen off. Go back to the last one that worked and say
+                    // what happened, rather than stranding the display on a request.
+                    if let fallback = self.lastGoodConfiguration, fallback != configuration {
+                        Diagnostics.shared.displayLog.error(
+                            "\(configuration.resolutionLabel) failed, falling back to \(fallback.resolutionLabel)"
+                        )
+                        self.lastError = nil
+                        self.model.configuration = fallback
+                        self.startDisplay()
+                        return
+                    }
+                    self.lastError = error.localizedDescription
+                    self.refreshUI()
                 }
             }
         } catch {
@@ -270,6 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender = nil
         display?.stop()
         display = nil
+        runningConfiguration = nil
         PointerInput.reset()
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
     }
