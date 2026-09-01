@@ -7,7 +7,6 @@
 @end
 
 @interface CGVirtualDisplaySettings : NSObject
-@property(nonatomic, assign) unsigned int rotation;
 @property(nonatomic, retain) NSArray<CGVirtualDisplayMode *> *modes;
 @property(nonatomic) unsigned int hiDPI;
 @end
@@ -27,11 +26,6 @@
 
 @interface CGVirtualDisplay : NSObject
 @property(nonatomic, readonly) CGDirectDisplayID displayID;
-// Read back so a rotation can put them straight back untouched, rather than re-deriving a mode
-// and turning a rotation into a reconfiguration.
-@property(nonatomic, readonly) unsigned int hiDPI;
-@property(nonatomic, readonly) unsigned int rotation;
-@property(nonatomic, readonly) NSArray<CGVirtualDisplayMode *> *modes;
 - (instancetype)initWithDescriptor:(CGVirtualDisplayDescriptor *)descriptor;
 - (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
 @end
@@ -86,37 +80,6 @@ AMVirtualDisplayHandle AMVirtualDisplayCreate(const char *name, uint32_t width, 
         *displayID = display.displayID;
         *errorMessage = nullptr;
         return (__bridge_retained void *)display;
-    }
-}
-
-bool AMVirtualDisplaySetRotation(AMVirtualDisplayHandle handle, uint32_t degrees,
-                                 const char **errorMessage) {
-    @autoreleasepool {
-        if (!handle) {
-            AMSetError(@"No virtual display to rotate", errorMessage);
-            return false;
-        }
-        Class settingsClass = NSClassFromString(@"CGVirtualDisplaySettings");
-        if (!settingsClass) {
-            AMSetError(@"CGVirtualDisplaySettings is unavailable on this macOS version", errorMessage);
-            return false;
-        }
-        CGVirtualDisplay *display = (__bridge CGVirtualDisplay *)handle;
-
-        // Rotation only. The modes and the HiDPI flag are read back off the live display and put
-        // straight back, because changing width by height is a display reconfiguration — macOS
-        // refuses it on a running display, and when it does not, WindowServer tears the display
-        // down and takes the windows on it with it. Rotation is a transform of the same display.
-        CGVirtualDisplaySettings *settings = [[settingsClass alloc] init];
-        settings.hiDPI = display.hiDPI;
-        settings.modes = display.modes;
-        settings.rotation = degrees;
-        if (![display applySettings:settings]) {
-            AMSetError(@"CGVirtualDisplay rejected the rotation", errorMessage);
-            return false;
-        }
-        *errorMessage = nullptr;
-        return true;
     }
 }
 

@@ -4,8 +4,6 @@ import AirMatePrivateCG
 
 protocol VirtualDisplayBackend: AnyObject {
     var displayID: CGDirectDisplayID { get }
-    /// Rotate the display without replacing it. Throws if this display will not take it.
-    func rotate(degrees: UInt32) throws
     func stop()
 }
 
@@ -34,14 +32,6 @@ final class CoreGraphicsVirtualDisplayBackend: VirtualDisplayBackend {
         }
         handle = created
         displayID = id
-    }
-
-    func rotate(degrees: UInt32) throws {
-        guard let handle else { throw DisplayError.creation("The virtual display is already gone") }
-        var errorPointer: UnsafePointer<CChar>?
-        guard AMVirtualDisplaySetRotation(handle, degrees, &errorPointer) else {
-            throw DisplayError.creation(errorPointer.map(String.init(cString:)) ?? "Unknown virtual display error")
-        }
     }
 
     func stop() {

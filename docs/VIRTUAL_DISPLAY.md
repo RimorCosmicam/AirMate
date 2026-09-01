@@ -94,6 +94,25 @@ landscape then showed only the top-left quadrant.
 
 Both 90 and 1 were tried, in case the property counts quarter turns rather than degrees.
 
+Measured directly, on a throwaway virtual display so nothing else was disturbed:
+
+```
+create applySettings -> YES
+displayID 56, rotation 0
+after create           bounds 960 x 540
+rotate(90) applySettings -> YES
+display.rotation now 0
+after rotate(90)       bounds 960 x 540
+```
+
+`applySettings:` returns `YES` and the rotation does not even persist on the object — it reads back
+as `0` — and the display's bounds never change. So this is not a case of the capture pipeline
+failing to follow the display. There is nothing to follow. The rotation property on this class is
+accepted and inert.
+
+The shim that called it has been deleted rather than left in place, because code that looks like a
+working mechanism and is not one is worse than no code at all.
+
 ## Where that leaves it
 
 Only (2) produces a genuinely portrait desktop, so that is what ships, with the cost accepted: the
