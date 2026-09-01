@@ -14,9 +14,6 @@ struct MontWindowView: View {
     var body: some View {
         ZStack {
             Color.black
-            if showsStripes {
-                MontStripes(first: MontColor.mustard, second: .black)
-            }
 
             VStack(alignment: .leading, spacing: 0) {
                 if model.welcomeCompleted {
@@ -30,15 +27,9 @@ struct MontWindowView: View {
             .padding(.top, 30)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(model.welcomeCompleted && !showsStripes ? Color.black : MontColor.surface)
+            .background(Color.black)
         }
         .frame(minWidth: 380, minHeight: 260)
-    }
-
-    private var showsStripes: Bool {
-        if !model.welcomeCompleted { return true }
-        if case .waitingForAndroid = model.state { return true }
-        return false
     }
 
     @ViewBuilder

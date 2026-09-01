@@ -197,7 +197,7 @@ internal sealed class MainForm : Form
             ? $"{controlRequest} wants to control this display."
             : lastError
               ?? (onboarding
-                  ? "A second screen for your Mac — sorry, for your PC — on the tablet you already own. Pick which display to send, then start."
+                  ? "A second screen for your PC, on the tablet you already own. Pick which display to send, then start."
                   : !running ? "Start AirMate when you want to send a display."
                   : !connected ? "Open AirMate on the tablet. Same Wi‑Fi is enough; the code is a shortcut."
                   : "AirMate is sending this display to the tablet.");
