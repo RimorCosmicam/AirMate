@@ -99,8 +99,13 @@ final class LatestFrameEncoder: @unchecked Sendable {
             : nil
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: frame.pixelBuffer,
-            presentationTimeStamp: CMTime(value: CMTimeValue(frame.id), timescale: 60),
-            duration: CMTime(value: 1, timescale: 60), frameProperties: properties,
+            // Real capture time, not a frame counter. Numbering frames at a fixed 60fps told the
+            // encoder that one second of wall clock was a sixtieth of a second of content whenever
+            // frames were sparse — so a keyframe interval of two seconds took well over a minute to
+            // come round, and a client that had just started a new session waited that long for
+            // something it could decode. That is the freeze.
+            presentationTimeStamp: CMTime(value: CMTimeValue(frame.captureNanos), timescale: 1_000_000_000),
+            duration: .invalid, frameProperties: properties,
             sourceFrameRefcon: refcon, infoFlagsOut: &flags
         )
         if status != noErr {

@@ -155,6 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     Diagnostics.shared.displayLog.notice(
                         "stalled: captured \(snapshot.captured) submitted \(snapshot.submitted) encoded \(snapshot.encoded) pending \(snapshot.droppedPending) network \(snapshot.droppedNetwork)"
                     )
+                    // Whoever is watching has nothing usable, so make this one a keyframe rather
+                    // than a difference against a picture they may never have received.
+                    encoder?.requestKeyframe()
                     Task { await capture.captureStill() }
                 }
                 lastEncodedSeen = snapshot.encoded
@@ -330,8 +333,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             startDisplay()
         case .stop:
             stopDisplay()
-        case let .setDisplay(width, height, hiDPI):
-            applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: hiDPI))
+        case let .setDisplay(width, height, _):
+            // The client's HiDPI flag is ignored: this host always runs HiDPI.
+            applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: true))
         case .requestIDR:
             encoder?.requestKeyframe()
         case let .clientDisplay(width, height):

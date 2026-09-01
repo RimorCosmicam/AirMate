@@ -69,7 +69,6 @@ fun ControlCard(
     panel: Pair<Int, Int>?,
     onStartStop: (Boolean) -> Unit,
     onResolution: (Int, Int) -> Unit,
-    onHiDPI: (Boolean) -> Unit,
     onAxis: (ScreenAxis) -> Unit,
     onLeniency: (FrameLeniency) -> Unit,
     onRequestKeyframe: () -> Unit,
@@ -96,7 +95,7 @@ fun ControlCard(
                 when {
                     status == null -> "No word from the Mac yet."
                     status.running -> "Display running at ${status.width} × ${status.height}" +
-                        if (status.hiDPI) " HiDPI" else ""
+                        ""
                     else -> "Display stopped."
                 }
             )
@@ -132,15 +131,6 @@ fun ControlCard(
                 selected = options.indexOfFirst { it == running }
             ) { index ->
                 onResolution(options[index].first, options[index].second)
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                MontLabel("HIDPI", Modifier.weight(1f), alpha = MontWhite.DIM, size = 11)
-                MontToggle(
-                    checked = status?.hiDPI == true,
-                    onChange = onHiDPI
-                )
             }
 
             Spacer(Modifier.height(12.dp))

@@ -3,7 +3,9 @@ import SwiftUI
 struct DisplayConfiguration: Equatable, Sendable {
     let width: Int
     let height: Int
-    var hiDPI: Bool
+    /// Always on. Turning it off was never worth the display rebuild it costs, and the control
+    /// that offered it caused more trouble than the setting was ever going to be worth.
+    var hiDPI: Bool = true
 
     /// Fallback sizes, used only until the client says how big it is.
     static let resolutions = [(1280, 800), (1920, 1080), (1920, 1200)]

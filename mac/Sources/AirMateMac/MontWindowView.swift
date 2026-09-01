@@ -137,27 +137,13 @@ struct MontWindowView: View {
                         DisplayConfiguration(
                             width: resolution.0,
                             height: resolution.1,
-                            hiDPI: configuration.hiDPI
+                            hiDPI: true
                         )
                     )
                 }
             }
         }
-        HStack(spacing: 10) {
-            Text("HIDPI")
-                .font(.montBlack(11))
-                .foregroundStyle(.white.opacity(MontWhite.dim))
-            MontToggle(isOn: configuration.hiDPI) { hiDPI in
-                model.onConfigurationChanged(
-                    DisplayConfiguration(
-                        width: configuration.width,
-                        height: configuration.height,
-                        hiDPI: hiDPI
-                    )
-                )
-            }
-        }
-        .padding(.vertical, 8)
+        .padding(.bottom, 8)
     }
 
     /// What this Mac is doing, which is true whether or not a tablet is here yet.

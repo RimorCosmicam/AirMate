@@ -416,18 +416,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                                 // Same rebuild, same wait, same curtain.
                                 beginDisplayChange("Resizing", width, height)
                             }
-                            send(ControlMessage.setDisplay(width, height, status?.hiDPI ?: true))
+                            send(ControlMessage.setDisplay(width, height, hiDPI = true))
                             syncOverlay()
-                        },
-                        onHiDPI = { hiDPI ->
-                            val current = status
-                            send(
-                                ControlMessage.setDisplay(
-                                    current?.width ?: 1920,
-                                    current?.height ?: 1080,
-                                    hiDPI
-                                )
-                            )
                         },
                         onAxis = ::applyAxis,
                         onLeniency = ::applyLeniency,
@@ -505,7 +495,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val height = if (next == ScreenAxis.VERTICAL) long else short
         if (width != current.width || height != current.height) {
             beginDisplayChange("Rotating", width, height)
-            send(ControlMessage.setDisplay(width, height, current.hiDPI))
+            send(ControlMessage.setDisplay(width, height, hiDPI = true))
         }
     }
 
