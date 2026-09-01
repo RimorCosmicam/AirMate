@@ -21,11 +21,19 @@ Built for the Galaxy Tab A7 and anything like it.
 - **Gets out of the way** — the moment the picture arrives the interface parts
   down the middle and is taken off the device entirely. What is left is a
   decoder and a surface.
-- **Comes back with a swipe** — pull in from either edge and the Mac's own
-  controls open on that side: start and stop, resolution, HiDPI, how the tablet
-  is allowed to rotate, and how hard to try before dropping a frame.
+- **Read with your hands** — tap to click, drag to scroll. The pointer is
+  borrowed, not taken: it goes to where you touched, acts, and returns to
+  wherever it was, so the tablet never drags the cursor off the screen you are
+  working on.
+- **Comes back with the back gesture** — back opens the host's own controls
+  rather than leaving, the way a game pauses: start and stop, resolution, HiDPI,
+  how the tablet may rotate, and how hard to try before dropping a frame, with
+  the frame rate and loss it is costing you alongside.
 - **Turns the way you want** — auto-rotates within one axis at a time, so it
-  never half-turns into the other shape while you are reading.
+  never half-turns into the other shape while you are reading. Changing axis
+  turns the Mac's display too; the stripes close over the picture while it is
+  rebuilt and open again on the new shape.
+- **Starts with your computer**, if you want it to — on macOS and on Windows.
 
 Hardware encode on the Mac, hardware decode on the tablet, and nothing in
 between that waits: the picture on screen is always the newest one that arrived.
@@ -52,13 +60,19 @@ The picker only appears when there is more than one display to choose from.
 
 ## Setting the host's controls from the tablet
 
-The tablet can drive the host, but only once you say so. The first time it asks,
-the host's window offers to allow it, and until someone presses that nothing the
-tablet sends changes anything.
+Pairing is the authorisation. The tablet being sent the picture is the tablet
+whose commands are obeyed, and anything from another address is discarded. There
+is no second confirmation step, because a device already receiving your screen
+gains nothing by also being asked whether it may change it — see
+`docs/SECURITY.md` for what that does and does not protect.
 
 Resolution and HiDPI apply on macOS, which owns the display it created. Windows
 is mirroring a display it did not create, so it ignores those and says so rather
 than pretending.
+
+Tapping and scrolling need Accessibility on macOS, which is a separate grant from
+Screen Recording. macOS refuses synthesised clicks silently, so the window asks
+for it and says plainly that touch does nothing without it.
 
 ## Building
 
