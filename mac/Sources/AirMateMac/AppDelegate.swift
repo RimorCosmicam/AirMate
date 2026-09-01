@@ -366,8 +366,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .stop:
             stopDisplay()
         case let .setDisplay(width, height, _):
-            // The client's HiDPI flag is ignored: this host always runs HiDPI.
-            applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: true))
+            // The client's HiDPI flag is ignored: a second screen wants desktop space, not scaling.
+            applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: false))
         case .requestIDR:
             encoder?.requestKeyframe()
         case let .clientDisplay(width, height, maxWidth, maxHeight):

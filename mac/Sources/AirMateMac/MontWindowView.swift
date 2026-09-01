@@ -137,7 +137,7 @@ struct MontWindowView: View {
                         DisplayConfiguration(
                             width: resolution.0,
                             height: resolution.1,
-                            hiDPI: true
+                            hiDPI: false
                         )
                     )
                 }

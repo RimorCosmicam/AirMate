@@ -3,9 +3,13 @@ import SwiftUI
 struct DisplayConfiguration: Equatable, Sendable {
     let width: Int
     let height: Int
-    /// Always on. Turning it off was never worth the display rebuild it costs, and the control
-    /// that offered it caused more trouble than the setting was ever going to be worth.
-    var hiDPI: Bool = true
+    /// Always off, and there is no control for it.
+    ///
+    /// HiDPI halves the desktop: a display built at 1800 x 1080 pixels presents as 900 x 540
+    /// points, so everything is drawn at double size and a toolbar ends up wider than a finger.
+    /// It would only make sense if the display were built at twice the size wanted, and twice
+    /// these sizes is past what the client can decode.
+    var hiDPI: Bool = false
 
     /// Fallback sizes, used only until the client says how big it is.
     static let resolutions = [(1280, 800), (1920, 1080), (1920, 1200)]

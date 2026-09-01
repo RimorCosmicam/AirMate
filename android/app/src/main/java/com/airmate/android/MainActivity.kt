@@ -440,7 +440,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                                 // Same rebuild, same wait, same curtain.
                                 beginDisplayChange("Resizing", width, height)
                             }
-                            send(ControlMessage.setDisplay(width, height, hiDPI = true))
+                            send(ControlMessage.setDisplay(width, height, hiDPI = false))
                             syncOverlay()
                         },
                         onAxis = ::applyAxis,
@@ -519,7 +519,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val height = if (next == ScreenAxis.VERTICAL) long else short
         if (width != current.width || height != current.height) {
             beginDisplayChange("Rotating", width, height)
-            send(ControlMessage.setDisplay(width, height, hiDPI = true))
+            send(ControlMessage.setDisplay(width, height, hiDPI = false))
         }
     }
 
@@ -549,7 +549,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         settings.fittedScreen = true
         if (best.first == current.width && best.second == current.height) return
         beginDisplayChange("Fitting", best.first, best.second)
-        send(ControlMessage.setDisplay(best.first, best.second, hiDPI = true))
+        send(ControlMessage.setDisplay(best.first, best.second, hiDPI = false))
     }
 
     /** This screen's own size, in its current orientation, or null before it has been laid out. */
