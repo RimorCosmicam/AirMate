@@ -55,6 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // denied, and a switch that lies about that is worse than no switch.
             self?.model.launchAtLogin = LoginItem.set(wanted)
         }
+        model.onRequestPointerPermission = { [weak self] in
+            PointerInput.requestPermission()
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
+            self?.refreshUI()
+        }
         model.onClose = { [weak self] in self?.window?.performClose(nil) }
 
         diagnosticsTimer = Timer.scheduledTimer(
@@ -105,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func refreshUI() {
         rebuildMenu()
+        model.pointerPermitted = PointerInput.isPermitted
 
         guard CGPreflightScreenCaptureAccess() else {
             model.state = .permissionRequired(restartReady: permissionSettingsOpened)
@@ -262,6 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender = nil
         display?.stop()
         display = nil
+        PointerInput.reset()
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
     }
 
@@ -278,6 +287,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: hiDPI))
         case .requestIDR:
             encoder?.requestKeyframe()
+        case let .pointer(button, x, y):
+            guard let displayID = display?.displayID else { return }
+            PointerInput.click(button, x: x, y: y, on: displayID)
+        case let .scroll(phase, x, y, dx, dy):
+            guard let displayID = display?.displayID else { return }
+            PointerInput.scroll(phase: phase, x: x, y: y, dx: dx, dy: dy, on: displayID)
         }
     }
 

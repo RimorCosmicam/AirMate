@@ -133,6 +133,25 @@ struct MontWindowView: View {
             }
         }
         HStack(spacing: 10) {
+            Text("TOUCH CONTROL")
+                .font(.montBlack(11))
+                .foregroundStyle(.white.opacity(MontWhite.dim))
+            Spacer()
+            // A grant, not a switch: macOS decides this one, and pretending otherwise would make
+            // the control lie whenever the user revokes it in Settings.
+            MontRow(
+                label: model.pointerPermitted ? "Granted" : "Allow…",
+                enabled: !model.pointerPermitted,
+                emphasis: model.pointerPermitted ? MontWhite.dim : MontWhite.active
+            ) {
+                model.onRequestPointerPermission()
+            }
+            .fixedSize()
+        }
+        if !model.pointerPermitted {
+            MontDetail("Taps and scrolls from the tablet need Accessibility. Without it they do nothing at all.")
+        }
+        HStack(spacing: 10) {
             Text("START WITH MAC")
                 .font(.montBlack(11))
                 .foregroundStyle(.white.opacity(MontWhite.dim))

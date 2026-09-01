@@ -113,12 +113,15 @@ private fun ColumnScope.PairStep(
 
 @Composable
 private fun ColumnScope.GestureStep(onFinished: () -> Unit) {
-    MontLabel("ONE GESTURE", alpha = MontWhite.DIM, size = 11)
-    MontDetail("Once the screen is live, AirMate gets out of the way entirely. This is how it comes back.")
+    MontLabel("TOUCH", alpha = MontWhite.DIM, size = 11)
+    MontDetail("Once the screen is live, AirMate gets out of the way and the tablet behaves like a touch screen on the Mac.")
     Spacer(Modifier.height(10.dp))
-    TourLine("SWIPE IN", "From either side edge")
-    TourLine("THE SIDE YOU USED", "Is the side the controls open on")
-    TourLine("EVERYTHING ELSE", "Resolution, HiDPI, rotation, stop")
+    TourLine("TAP", "Clicks, where you tapped")
+    TourLine("DRAG", "Scrolls the page with your finger")
+    TourLine("TWO FINGERS", "Right click")
+    Spacer(Modifier.height(10.dp))
+    MontLabel("AND BACK", alpha = MontWhite.DIM, size = 11)
+    TourLine("THE BACK GESTURE", "Opens the controls, never leaves")
     Spacer(Modifier.height(8.dp))
     MontRow("Got it", onClick = onFinished)
 }

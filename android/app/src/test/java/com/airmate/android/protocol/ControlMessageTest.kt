@@ -15,6 +15,30 @@ class ControlMessageTest {
         )
     }
 
+    @Test fun buildsPointerAtNormalisedCoordinates() {
+        // Centre of the display, right button.
+        assertArrayEquals(
+            byteArrayOf(0x41, 0x4D, 0x43, 0x31, 1, 6, 0, 5, 2, 0x7F, 0xFF.toByte(), 0x7F, 0xFF.toByte()),
+            ControlMessage.pointer(ControlMessage.BUTTON_RIGHT, 0x7FFF, 0x7FFF)
+        )
+    }
+
+    @Test fun buildsScrollWithSignedDeltas() {
+        val packet = ControlMessage.scroll(ControlMessage.PHASE_CONTINUE, 0, 0, -1, 40)
+        assertArrayEquals(
+            byteArrayOf(0x41, 0x4D, 0x43, 0x31, 1, 7, 0, 9, 1, 0, 0, 0, 0, 0xFF.toByte(), 0xFF.toByte(), 0, 40),
+            packet
+        )
+    }
+
+    @Test fun clampsScrollDeltasToTheWire() {
+        // A fast flick can outrun a signed 16-bit field; it must saturate rather than wrap and
+        // send the page flying the other way.
+        val packet = ControlMessage.scroll(ControlMessage.PHASE_CONTINUE, 0, 0, 0, 99_999)
+        val dy = ((packet[15].toInt() and 0xff) shl 8) or (packet[16].toInt() and 0xff)
+        assertEquals(32767, dy)
+    }
+
     @Test fun buildsSimpleMessageWithEmptyPayload() {
         assertArrayEquals(
             byteArrayOf(0x41, 0x4D, 0x43, 0x31, 1, 5, 0, 0),

@@ -7,12 +7,18 @@ enum ControlPacket {
     static let version: UInt8 = 1
     static let headerBytes = 8
 
+    enum Button: UInt8 { case left = 1, right = 2 }
+    enum ScrollPhase: UInt8 { case begin = 0, continued = 1, ended = 2 }
+
     enum Command: Equatable {
         case hello
         case start
         case stop
         case setDisplay(width: Int, height: Int, hiDPI: Bool)
         case requestIDR
+        /// Coordinates are normalised across the streamed display, `0` to `65535` on each axis.
+        case pointer(button: Button, x: UInt16, y: UInt16)
+        case scroll(phase: ScrollPhase, x: UInt16, y: UInt16, dx: Int16, dy: Int16)
 
         /// Whether obeying this would change what the Mac is doing.
         ///
@@ -44,6 +50,22 @@ enum ControlPacket {
             guard width > 0, height > 0 else { return nil }
             return .setDisplay(width: width, height: height, hiDPI: buffer[headerBytes + 4] & 1 != 0)
         case 5: return .requestIDR
+        case 6:
+            guard payloadLength >= 5, let button = Button(rawValue: buffer[headerBytes]) else { return nil }
+            return .pointer(
+                button: button,
+                x: buffer.readBE16(headerBytes + 1),
+                y: buffer.readBE16(headerBytes + 3)
+            )
+        case 7:
+            guard payloadLength >= 9, let phase = ScrollPhase(rawValue: buffer[headerBytes]) else { return nil }
+            return .scroll(
+                phase: phase,
+                x: buffer.readBE16(headerBytes + 1),
+                y: buffer.readBE16(headerBytes + 3),
+                dx: Int16(bitPattern: buffer.readBE16(headerBytes + 5)),
+                dy: Int16(bitPattern: buffer.readBE16(headerBytes + 7))
+            )
         default: return nil
         }
     }

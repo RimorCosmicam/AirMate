@@ -31,12 +31,19 @@ final class AppModel: ObservableObject {
     @Published var welcomeCompleted = UserDefaults.standard.bool(forKey: welcomeKey)
     @Published var launchAtLogin = LoginItem.isEnabled
 
+    /// Whether this Mac will accept touches from the tablet as clicks and scrolls.
+    ///
+    /// Accessibility, not Screen Recording — a separate grant, and one that fails silently when it
+    /// is missing, so the window has to say so rather than letting taps quietly do nothing.
+    @Published var pointerPermitted = false
+
     var onToggleDisplay: () -> Void = {}
     var onOpenPermissionSettings: () -> Void = {}
     var onRestartForPermission: () -> Void = {}
     var onSaveAndroidApp: () -> Void = {}
     var onConfigurationChanged: (DisplayConfiguration) -> Void = { _ in }
     var onLaunchAtLogin: (Bool) -> Void = { _ in }
+    var onRequestPointerPermission: () -> Void = {}
     var onClose: () -> Void = {}
 
     private static let welcomeKey = "AirMateWelcomeCompleted"

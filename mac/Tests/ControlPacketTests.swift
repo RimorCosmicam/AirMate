@@ -44,6 +44,36 @@ final class ControlPacketTests: XCTestCase {
         }
     }
 
+    func testParsesPointerAtNormalisedCentre() throws {
+        let bytes = header(type: 6, payload: [2, 0x7f, 0xff, 0x7f, 0xff])
+        XCTAssertEqual(
+            ControlPacket.parse(bytes, count: bytes.count),
+            .pointer(button: .right, x: 0x7fff, y: 0x7fff)
+        )
+    }
+
+    func testParsesScrollWithNegativeDelta() throws {
+        // dx of -1 arrives as 0xffff and must come back signed, not as 65535 pixels rightwards.
+        let bytes = header(type: 7, payload: [1, 0, 0, 0, 0, 0xff, 0xff, 0, 40])
+        XCTAssertEqual(
+            ControlPacket.parse(bytes, count: bytes.count),
+            .scroll(phase: .continued, x: 0, y: 0, dx: -1, dy: 40)
+        )
+    }
+
+    func testRejectsUnknownButtonAndPhase() {
+        let badButton = header(type: 6, payload: [9, 0, 0, 0, 0])
+        XCTAssertNil(ControlPacket.parse(badButton, count: badButton.count))
+        let badPhase = header(type: 7, payload: [9, 0, 0, 0, 0, 0, 0, 0, 0])
+        XCTAssertNil(ControlPacket.parse(badPhase, count: badPhase.count))
+    }
+
+    /// Pointer and scroll change what the Mac is doing and must be gated like everything else.
+    func testPointerAndScrollChangeState() {
+        XCTAssertTrue(ControlPacket.Command.pointer(button: .left, x: 0, y: 0).changesState)
+        XCTAssertTrue(ControlPacket.Command.scroll(phase: .begin, x: 0, y: 0, dx: 0, dy: 0).changesState)
+    }
+
     func testStatusDatagramLayout() {
         let packet = StatusPacket.datagram(
             running: true, hiDPI: false, authorised: true,

@@ -37,7 +37,8 @@ import com.airmate.android.protocol.StatusMessage
 import com.airmate.android.ui.AspectSurfaceView
 import com.airmate.android.ui.CardEdge
 import com.airmate.android.ui.ControlCard
-import com.airmate.android.ui.EdgeGestureDetector
+import com.airmate.android.ui.TouchInput
+import com.airmate.android.ui.TouchSurface
 import com.airmate.android.ui.OnboardingScreen
 import com.airmate.android.ui.PairingScreen
 import com.airmate.android.ui.StripeBackdrop
@@ -63,7 +64,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var surfaceView: AspectSurfaceView
     private lateinit var root: FrameLayout
     private var overlay: ComposeView? = null
-    private lateinit var edgeDetector: EdgeGestureDetector
+    private lateinit var touchInput: TouchInput
     private var decoder: LowLatencyDecoder? = null
     private var receiver: UdpVideoReceiver? = null
 
@@ -107,7 +108,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             if (cardEdge != null) {
                 cardEdge = null
             } else {
-                cardEdge = pendingEdge ?: edgeDetector.lastTouchedSide ?: CardEdge.LEFT
+                cardEdge = pendingEdge ?: touchInput.lastTouchedSide ?: CardEdge.LEFT
             }
             pendingEdge = null
             syncOverlay()
@@ -215,13 +216,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 Gravity.CENTER
             )
         )
-        edgeDetector = EdgeGestureDetector(this) { edge ->
-            if (streaming) {
-                cardEdge = edge
-                syncOverlay()
-            }
-        }
-        root.setOnTouchListener(edgeDetector)
+        touchInput = TouchInput(this, surface = ::touchSurface, send = ::send)
+        root.setOnTouchListener(touchInput)
         onBackPressedDispatcher.addCallback(this, backCallback)
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> reserveEdges() }
         setContentView(root)
@@ -243,9 +239,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * Ask the system to leave the edge strips alone.
      *
      * Android caps this at 200dp of height per edge, so it cannot cover the whole side — the back
-     * callback handles whatever falls outside. Within these bands the swipe reaches
-     * [EdgeGestureDetector] intact, which is the only way to know for certain which side it came
-     * from on a device older than Android 14.
+     * callback catches whatever falls outside. It matters more now than it did for opening the
+     * menu: a page dragged from near the bezel should scroll, not walk out of the app.
      */
     private fun reserveEdges() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
@@ -421,6 +416,27 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
+
+    /**
+     * Where the picture is, and how big the host thinks it is.
+     *
+     * Null while nothing is being streamed, or before the host has said what size it is — a touch
+     * has nowhere meaningful to land until both are known, and guessing would put every tap in the
+     * wrong place.
+     */
+    private fun touchSurface(): TouchSurface? {
+        val current = status ?: return null
+        if (!streaming || cardEdge != null) return null
+        if (surfaceView.width <= 0 || surfaceView.height <= 0) return null
+        return TouchSurface(
+            left = surfaceView.left,
+            top = surfaceView.top,
+            width = surfaceView.width,
+            height = surfaceView.height,
+            displayWidth = current.width,
+            displayHeight = current.height
+        )
+    }
 
     // MARK: - Pairing
 
