@@ -112,16 +112,34 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /** When the Mac last said anything about itself. */
+    @Volatile private var lastStatusNanos = 0L
+
     private val watchStream = object : Runnable {
         override fun run() {
             val frames = receiver?.receivedFrames ?: 0
-            if (frames > 0 && !streaming) {
+            // Liveness comes from the Mac's own once-a-second status, not from frames arriving.
+            // ScreenCaptureKit only produces a frame when the display changes, so a desktop nobody
+            // is touching looks exactly like a stream that has died.
+            // Only a Mac that *was* talking and then stopped counts as gone. A Mac that has never
+            // sent status — an older build, or one whose datagrams are being dropped — must not be
+            // declared dead on the strength of a signal that was never there.
+            val everHeard = lastStatusNanos != 0L
+            val goneQuiet = everHeard &&
+                System.nanoTime() - lastStatusNanos >= HOST_SILENCE_NANOS
+            val hostRunning = status?.running != false
+
+            if (frames > 0 && !streaming && hostRunning) {
                 streaming = true
                 everStreamed = true
-                leaving = true
-            } else if (frames == 0L && streaming) {
+                // The ground only parts once there is something behind it to reveal, and once the
+                // reader is done being introduced to it.
+                if (onboarded) leaving = true
+                syncOverlay()
+            } else if (streaming && (goneQuiet || !hostRunning)) {
                 streaming = false
                 leaving = false
+                cardEdge = null
                 syncOverlay()
             }
             root.postDelayed(this, 500)
@@ -217,7 +235,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // Enabled while the stream owns the screen, or while the card is up. Off during pairing,
         // where back should still do the ordinary thing and leave.
         backCallback.isEnabled = (streaming && !leaving) || cardEdge != null
-        val wanted = !streaming || leaving || cardEdge != null
+        val wanted = !onboarded || !streaming || leaving || cardEdge != null
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
             overlay = view
@@ -243,12 +261,23 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             targetValue = if (leaving) 1f else 0f,
             animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
             label = "journey",
-            finishedListener = { if (it == 1f) syncOverlay() }
+            finishedListener = {
+                if (it == 1f) {
+                    // The parting is over. Clearing this is what actually takes the overlay off the
+                    // device — left set, the ComposeView stayed mounted over the video for the rest
+                    // of the session, eating every touch and holding the back callback disabled.
+                    // Posted so the view is removed outside the animation's own callback.
+                    root.post {
+                        leaving = false
+                        syncOverlay()
+                    }
+                }
+            }
         )
 
         Box(Modifier.fillMaxSize()) {
             if (!streaming || leaving) {
-                StripeBackdrop(split = journey, disconnected = everStreamed && !streaming)
+                StripeBackdrop(split = journey, disconnected = onboarded && everStreamed && !streaming)
             }
             Box(Modifier.alpha(1f - (journey / 0.22f).coerceAtMost(1f))) {
                 val edge = cardEdge
@@ -286,6 +315,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         onFinished = {
                             settings.onboarded = true
                             onboarded = true
+                            // If the stream arrived while they were still reading, the ground parts
+                            // now rather than never.
+                            if (streaming) leaving = true
+                            syncOverlay()
                         }
                     )
                     else -> PairingScreen(
@@ -377,6 +410,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val created = LowLatencyDecoder(holder.surface)
         decoder = created
         receiver = UdpVideoReceiver(created, onStatus = { message ->
+            lastStatusNanos = System.nanoTime()
             runOnUiThread {
                 status = message
                 surfaceView.setAspect(message.width, message.height)
@@ -404,5 +438,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         super.onDestroy()
     }
 
-    private companion object { const val TAG = "AirMate.Android" }
+    private companion object {
+        const val TAG = "AirMate.Android"
+        /** How long the Mac may go quiet before the tablet stops believing in it. */
+        const val HOST_SILENCE_NANOS = 4_000_000_000L
+    }
 }
