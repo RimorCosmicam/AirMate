@@ -226,10 +226,16 @@ fun MontStage(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
+        // Measured against the short and long edges rather than width and height, so the card is
+        // the same card whichever way the tablet is held. Keyed to height and width directly, a
+        // rotation swapped their meanings: the type pinned at its cap while the card narrowed, and
+        // the result was neither the landscape layout nor a considered portrait one.
+        val shortEdge = minOf(maxWidth, maxHeight)
+        val longEdge = maxOf(maxWidth, maxHeight)
         // 560dp is roughly the short edge of the phone the language was drawn on, so a tablet
         // lands somewhere near 1.5x and a small screen stays exactly as Mont specifies.
-        val scale = (maxHeight / 560.dp).coerceIn(1f, 2f)
-        val cardWidth = (maxWidth * 0.44f).coerceIn(340.dp, 760.dp)
+        val scale = (shortEdge / 560.dp).coerceIn(1f, 2f)
+        val cardWidth = (longEdge * 0.44f).coerceIn(340.dp, 760.dp).coerceAtMost(maxWidth * 0.92f)
         CompositionLocalProvider(LocalMontScale provides scale) {
             MontCard(
                 Modifier

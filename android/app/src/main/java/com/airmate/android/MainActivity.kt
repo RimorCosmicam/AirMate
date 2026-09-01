@@ -163,7 +163,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             // dropped status datagram or a single stalled tick would otherwise flash the whole
             // pairing screen over the video and take it away again half a second later, which is
             // far worse to sit in front of than the brief interruption it is reporting.
-            if (healthy) troubledSince = 0L else if (troubledSince == 0L) troubledSince = now
+            // A display being rebuilt goes quiet by definition. Counting that as trouble is what
+            // turned a rotation into "no connection", and left the pairing screen waiting behind a
+            // curtain that had already done its job.
+            if (curtainDrawn) troubledSince = 0L
+            else if (healthy) troubledSince = 0L
+            else if (troubledSince == 0L) troubledSince = now
 
             if (frames > 0 && !streaming && healthy) {
                 streaming = true
@@ -172,7 +177,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 // reader is done being introduced to it.
                 if (onboarded) leaving = true
                 syncOverlay()
-            } else if (streaming && troubledSince != 0L && now - troubledSince >= HOST_SILENCE_NANOS) {
+            } else if (!curtainDrawn && streaming && troubledSince != 0L &&
+                now - troubledSince >= HOST_SILENCE_NANOS
+            ) {
                 streaming = false
                 leaving = false
                 cardEdge = null
@@ -214,6 +221,15 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         val decoded = decoder?.decodedFrames ?: 0
         val dropped = (decoder?.droppedFrames ?: 0) + (receiver?.abandonedFrames ?: 0)
+        if (decoded < sampleDecoded || dropped < sampleDropped) {
+            // The decoder was replaced — a rotation does it — and its counters started again from
+            // zero. Measured against the old baseline every delta is negative, and the reading
+            // stays blank for as long as the app runs.
+            sampleNanos = now
+            sampleDecoded = decoded
+            sampleDropped = dropped
+            return
+        }
         val decodedDelta = decoded - sampleDecoded
         val droppedDelta = dropped - sampleDropped
         val seconds = elapsed / 1_000_000_000.0

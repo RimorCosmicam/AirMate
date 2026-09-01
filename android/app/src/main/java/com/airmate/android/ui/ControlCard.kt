@@ -99,11 +99,19 @@ fun ControlCard(
 
             Spacer(Modifier.height(10.dp))
             MontLabel("RESOLUTION", alpha = MontWhite.DIM, size = 11)
+            // Turned to match the axis, because a portrait display cannot be chosen from a list of
+            // landscape sizes — and whatever is actually running is always in the list, so the row
+            // always shows where you are rather than highlighting nothing.
+            val running = status?.let { it.width to it.height }
+            val oriented = RESOLUTIONS.map { (wide, tall) ->
+                if (axis == ScreenAxis.VERTICAL) tall to wide else wide to tall
+            }
+            val options = (oriented + listOfNotNull(running)).distinct()
             MontChips(
-                options = RESOLUTIONS.map { "${it.first} × ${it.second}" },
-                selected = RESOLUTIONS.indexOfFirst { it.first == status?.width && it.second == status.height }
+                options = options.map { "${it.first} × ${it.second}" },
+                selected = options.indexOfFirst { it == running }
             ) { index ->
-                onResolution(RESOLUTIONS[index].first, RESOLUTIONS[index].second)
+                onResolution(options[index].first, options[index].second)
             }
 
             Spacer(Modifier.height(8.dp))
