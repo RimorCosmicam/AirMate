@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -46,6 +47,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlin.math.roundToInt
 
 /**
  * The whole client.
@@ -115,6 +117,14 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     /** When the Mac last said anything about itself. */
     @Volatile private var lastStatusNanos = 0L
 
+    // Measured rather than promised: the frame-skip setting is only worth choosing between if you
+    // can see what it costs and what it saves.
+    private var fps by mutableIntStateOf(0)
+    private var dropPercent by mutableFloatStateOf(0f)
+    private var sampleNanos = 0L
+    private var sampleDecoded = 0L
+    private var sampleDropped = 0L
+
     private val watchStream = object : Runnable {
         override fun run() {
             val frames = receiver?.receivedFrames ?: 0
@@ -142,8 +152,34 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 cardEdge = null
                 syncOverlay()
             }
+            sampleRates()
             root.postDelayed(this, 500)
         }
+    }
+
+    /** Decoded frames per second, and the share of frames that never made it, over the last second. */
+    private fun sampleRates() {
+        val now = System.nanoTime()
+        if (sampleNanos == 0L) {
+            sampleNanos = now
+            return
+        }
+        val elapsed = now - sampleNanos
+        if (elapsed < 1_000_000_000L) return
+
+        val decoded = decoder?.decodedFrames ?: 0
+        val dropped = (decoder?.droppedFrames ?: 0) + (receiver?.abandonedFrames ?: 0)
+        val decodedDelta = decoded - sampleDecoded
+        val droppedDelta = dropped - sampleDropped
+        val seconds = elapsed / 1_000_000_000.0
+
+        fps = (decodedDelta / seconds).roundToInt()
+        val attempted = decodedDelta + droppedDelta
+        dropPercent = if (attempted > 0) droppedDelta * 100f / attempted else 0f
+
+        sampleNanos = now
+        sampleDecoded = decoded
+        sampleDropped = dropped
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -287,6 +323,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         status = status,
                         axis = axis,
                         leniency = leniency,
+                        fps = fps,
+                        dropPercent = dropPercent,
                         onStartStop = { start ->
                             send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
                         },
@@ -333,10 +371,30 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * Turn the tablet, and turn the Mac's display to match.
+     *
+     * Rotating only the tablet leaves a landscape desktop letterboxed into a portrait panel, which
+     * is a smaller picture rather than a taller one. The host is asked to turn its display too, by
+     * swapping the side lengths it already reported — so this follows whatever size is actually in
+     * use rather than assuming one.
+     *
+     * A host that mirrors a display it did not create ignores this, as it should: that display's
+     * shape is not AirMate's to set. The tablet still rotates either way.
+     */
     private fun applyAxis(next: ScreenAxis) {
         axis = next
         settings.axis = next
         requestedOrientation = next.requested
+
+        val current = status ?: return
+        val long = maxOf(current.width, current.height)
+        val short = minOf(current.width, current.height)
+        val width = if (next == ScreenAxis.VERTICAL) short else long
+        val height = if (next == ScreenAxis.VERTICAL) long else short
+        if (width != current.width || height != current.height) {
+            send(ControlMessage.setDisplay(width, height, current.hiDPI))
+        }
     }
 
     private fun applyLeniency(next: FrameLeniency) {

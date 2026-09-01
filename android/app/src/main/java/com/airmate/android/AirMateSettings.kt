@@ -31,9 +31,9 @@ enum class FrameLeniency(
     val decoderWaitMicros: Long
 ) {
     ACTUAL("Actual", 0, 0),
-    ONE("1 frame", 1, 2_000),
-    TWO("2 frames", 2, 4_000),
-    FOUR("4 frames", 4, 8_000)
+    ONE("+16 ms", 1, 2_000),
+    TWO("+33 ms", 2, 4_000),
+    FOUR("+66 ms", 4, 8_000)
 }
 
 /**

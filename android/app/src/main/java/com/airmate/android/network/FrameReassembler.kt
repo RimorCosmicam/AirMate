@@ -25,6 +25,10 @@ class FrameReassembler(private val maximumBytes: Int = 8 * 1024 * 1024) {
 
     private var newerSightings = 0
 
+    /** Access units given up on part-built. The honest measure of loss on this path. */
+    @Volatile var abandoned = 0L
+        private set
+
     data class Complete(val bytes: ByteArray, val length: Int, val frameId: Long, val captureNanos: Long, val flags: Int)
 
     fun accept(packet: ByteArray, packetLength: Int, header: VideoHeader): Complete? {
@@ -61,6 +65,7 @@ class FrameReassembler(private val maximumBytes: Int = 8 * 1024 * 1024) {
     }
 
     private fun reset(header: VideoHeader) {
+        if (receivedCount in 1 until fragmentCount) abandoned++
         generation++
         if (generation == Int.MAX_VALUE) { fragmentGeneration.fill(0); generation = 1 }
         sessionId = header.sessionId

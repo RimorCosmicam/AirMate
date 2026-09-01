@@ -29,6 +29,9 @@ class UdpVideoReceiver(
 
     var receivedFrames = 0L; private set
 
+    /** Frames the reassembler gave up on, part-built. */
+    val abandonedFrames: Long get() = reassembler.abandoned
+
     var leniency: FrameLeniency = FrameLeniency.ACTUAL
         set(value) {
             field = value

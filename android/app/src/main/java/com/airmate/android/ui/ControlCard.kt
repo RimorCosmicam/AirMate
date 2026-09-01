@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +48,8 @@ fun ControlCard(
     status: StatusMessage?,
     axis: ScreenAxis,
     leniency: FrameLeniency,
+    fps: Int,
+    dropPercent: Float,
     onStartStop: (Boolean) -> Unit,
     onResolution: (Int, Int) -> Unit,
     onHiDPI: (Boolean) -> Unit,
@@ -116,7 +119,7 @@ fun ControlCard(
 
             Spacer(Modifier.height(12.dp))
             MontLabel("ROTATION", alpha = MontWhite.DIM, size = 11)
-            MontDetail("Turns on its own within the axis you pick. The Mac keeps one resolution either way.")
+            MontDetail("Turns on its own within the axis you pick. A Mac turns its display to match; a mirrored display keeps its own shape.")
             MontChips(
                 options = ScreenAxis.entries.map { it.label },
                 selected = axis.ordinal
@@ -124,11 +127,29 @@ fun ControlCard(
 
             Spacer(Modifier.height(12.dp))
             MontLabel("FRAME SKIP", alpha = MontWhite.DIM, size = 11)
-            MontDetail("How hard to try before giving up on a frame. Higher keeps more of them and costs latency.")
+            MontDetail("How long to wait for a late frame before giving up on it. What you pay is latency; what you keep is below.")
             MontChips(
                 options = FrameLeniency.entries.map { it.label },
                 selected = leniency.ordinal
             ) { onLeniency(FrameLeniency.entries[it]) }
+
+            // The numbers the setting above is meant to move. Without them it is a choice between
+            // four words.
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    MontLabel("FPS", alpha = MontWhite.DIM, size = 10)
+                    MontLabel(if (fps > 0) "$fps" else "—", size = 15)
+                }
+                Column(Modifier.weight(1f)) {
+                    MontLabel("DROPPED", alpha = MontWhite.DIM, size = 10)
+                    MontLabel(
+                        if (fps > 0) String.format("%.1f%%", dropPercent) else "—",
+                        alpha = if (dropPercent >= 5f) MontWhite.ACTIVE else MontWhite.DETAIL,
+                        size = 15
+                    )
+                }
+            }
 
             Spacer(Modifier.height(12.dp))
             MontRow(label = "Ask for a fresh keyframe", enabled = authorised, active = false) {
