@@ -24,8 +24,10 @@ struct DisplayConfiguration: Equatable, Sendable {
         within ceiling: (width: Int, height: Int)? = nil
     ) -> [(Int, Int)] {
         guard let panel, panel.width > 0, panel.height > 0 else { return resolutions }
-        func even(_ value: Double) -> Int { Int((value / 2).rounded()) * 2 }
-        let derived = [1.0, 0.9, 0.8, 0.7, 0.6].map { scale in
+        // Multiples of sixteen: hardware decoders refuse anything else, however far inside their
+        // stated limits it is.
+        func even(_ value: Double) -> Int { max(16, Int((value / 16).rounded()) * 16) }
+        let derived = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4].map { scale in
             (even(Double(panel.width) * scale), even(Double(panel.height) * scale))
         }.filter { candidate in
             guard candidate.0 >= 640, candidate.1 >= 480 else { return false }
@@ -33,7 +35,8 @@ struct DisplayConfiguration: Equatable, Sendable {
             guard let ceiling, ceiling.width > 0, ceiling.height > 0 else { return true }
             return candidate.0 <= ceiling.width && candidate.1 <= ceiling.height
         }
-        return derived.isEmpty ? resolutions : derived
+        // Four, matching what the client offers, so the two windows never disagree.
+        return derived.isEmpty ? resolutions : Array(derived.prefix(4))
     }
     var resolutionLabel: String { "\(width) × \(height)" }
 }

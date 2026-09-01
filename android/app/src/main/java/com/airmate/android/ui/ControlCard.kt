@@ -47,13 +47,24 @@ val RESOLUTIONS = listOf(1280 to 800, 1920 to 1080, 1920 to 1200)
  * larger decoder simply gets larger options.
  */
 fun resolutionsFor(panel: Pair<Int, Int>): List<Pair<Int, Int>> =
-    listOf(1.0, 0.9, 0.8, 0.7, 0.6)
+    listOf(1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4)
         .map { scale -> even(panel.first * scale) to even(panel.second * scale) }
         .filter { it.first >= 640 && it.second >= 480 }
         .filter { DecoderLimits.supports(it.first, it.second) }
         .distinct()
+        // Four, always: the candidates start at the screen's own size and step down, and however
+        // many of the largest the decoder refuses, four usable ones are still offered below them.
+        .take(4)
 
-private fun even(value: Double): Int = (value.roundToInt() / 2) * 2
+/**
+ * Snapped to a multiple of sixteen, because that is what hardware decoders require.
+ *
+ * Even numbers are not enough: 1800 x 1080 sits comfortably inside a 1920 x 1088 decoder and is
+ * still refused, purely because 1800 is not a multiple of sixteen. Rounded properly it becomes
+ * 1792 x 1088, which the same decoder accepts — a larger picture than the next size down, obtained
+ * by asking for it in the shape the hardware wants.
+ */
+private fun even(value: Double): Int = ((value / 16).roundToInt() * 16).coerceAtLeast(16)
 
 
 /**

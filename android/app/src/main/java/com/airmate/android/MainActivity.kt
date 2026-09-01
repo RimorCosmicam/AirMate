@@ -574,7 +574,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (size == reportedPanel && now - panelReportedAt < PANEL_REPEAT_NANOS) return
         reportedPanel = size
         panelReportedAt = now
-        val ceiling = DecoderLimits.ceiling() ?: (size.first to size.second)
+        // The largest size this device will genuinely decode, not the decoder's headline maximum.
+        // The two differ — 1800 x 1080 is inside a 1920 limit and is still refused — and reporting
+        // the headline number let the host offer sizes that kill the picture when chosen.
+        val ceiling = resolutionsFor(size).firstOrNull()
+            ?: DecoderLimits.ceiling()
+            ?: (size.first to size.second)
         send(ControlMessage.clientDisplay(size.first, size.second, ceiling.first, ceiling.second))
     }
 
