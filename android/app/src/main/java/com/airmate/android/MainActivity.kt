@@ -518,6 +518,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
 
     private var reportedPanel = 0 to 0
+    private var panelReportedAt = 0L
 
     /** This screen's own size, in its current orientation, or null before it has been laid out. */
     private fun panelSize(): Pair<Int, Int>? {
@@ -533,8 +534,14 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      */
     private fun reportPanelSize() {
         val size = root.width to root.height
-        if (size.first <= 0 || size.second <= 0 || size == reportedPanel) return
+        if (size.first <= 0 || size.second <= 0) return
+        // Repeated as well as sent on change: the host forgets everything when it restarts its
+        // display, and a client that only ever said this once leaves it guessing from then on —
+        // which is why the two windows stopped offering the same sizes.
+        val now = System.nanoTime()
+        if (size == reportedPanel && now - panelReportedAt < PANEL_REPEAT_NANOS) return
         reportedPanel = size
+        panelReportedAt = now
         send(ControlMessage.clientDisplay(size.first, size.second))
     }
 
@@ -655,6 +662,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         const val TAG = "AirMate.Android"
         /** How long the Mac may go quiet before the tablet stops believing in it. */
         const val HOST_SILENCE_NANOS = 4_000_000_000L
+        /** How often to remind the host how big this screen is. */
+        const val PANEL_REPEAT_NANOS = 5_000_000_000L
         /** How long to hold the curtain for a host that may never change shape. */
         const val CURTAIN_PATIENCE_NANOS = 6_000_000_000L
     }

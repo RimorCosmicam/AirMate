@@ -150,6 +150,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 // Ask it for its contents rather than leaving the client on whatever it last had —
                 // which, after a session change, is a picture of a display that no longer exists.
                 if snapshot.encoded == lastEncodedSeen, let capture {
+                    // Nothing produced since the last tick. Say so with the counters, because
+                    // "no picture" has several possible causes and they look identical from here.
+                    Diagnostics.shared.displayLog.notice(
+                        "stalled: captured \(snapshot.captured) submitted \(snapshot.submitted) encoded \(snapshot.encoded) pending \(snapshot.droppedPending) network \(snapshot.droppedNetwork)"
+                    )
                     Task { await capture.captureStill() }
                 }
                 lastEncodedSeen = snapshot.encoded

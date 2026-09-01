@@ -46,13 +46,14 @@ struct MontWindowView: View {
             pairing(url: url)
         case .connectingVideo:
             MontDetail("Android found. Starting the video stream…")
+            preferences
             MontRow(label: "Stop display") { model.onToggleDisplay() }
             MontRow(label: "Save Android app…") { model.onSaveAndroidApp() }
         case let .connected(snapshot, configuration):
             connected(snapshot: snapshot, configuration: configuration)
-        case let .stopped(configuration):
+        case .stopped:
             MontDetail("Start AirMate when you want to reconnect.")
-            settings(configuration)
+            preferences
             MontRow(label: "Start display") { model.onToggleDisplay() }
             MontRow(label: "Save Android app…") { model.onSaveAndroidApp() }
         case let .failed(message):
@@ -112,13 +113,18 @@ struct MontWindowView: View {
             MontMetric(title: "FRAMES", value: snapshot.encoded.formatted())
         }
         .padding(.vertical, 12)
-        settings(configuration)
+        displaySettings(configuration)
+        preferences
         MontRow(label: "Stop display") { model.onToggleDisplay() }
         MontRow(label: "Save Android app…") { model.onSaveAndroidApp() }
     }
 
+    /// What the display is doing — meaningless until something is connected to show it on.
+    ///
+    /// Resolution and HiDPI both rebuild the display, and their whole effect is on a screen that
+    /// is not there yet. Offering them to nobody invites changing a picture no one can see.
     @ViewBuilder
-    private func settings(_ configuration: DisplayConfiguration) -> some View {
+    private func displaySettings(_ configuration: DisplayConfiguration) -> some View {
         HStack(spacing: 14) {
             // Identified by position, not by width: 1920 × 1080 and 1920 × 1200 share a width, so
             // keying on it gave two chips the same identity and SwiftUI drew one of them twice.
@@ -137,6 +143,26 @@ struct MontWindowView: View {
                 }
             }
         }
+        HStack(spacing: 10) {
+            Text("HIDPI")
+                .font(.montBlack(11))
+                .foregroundStyle(.white.opacity(MontWhite.dim))
+            MontToggle(isOn: configuration.hiDPI) { hiDPI in
+                model.onConfigurationChanged(
+                    DisplayConfiguration(
+                        width: configuration.width,
+                        height: configuration.height,
+                        hiDPI: hiDPI
+                    )
+                )
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    /// What this Mac is doing, which is true whether or not a tablet is here yet.
+    @ViewBuilder
+    private var preferences: some View {
         HStack(spacing: 10) {
             Text("READING MODE")
                 .font(.montBlack(11))
@@ -161,21 +187,6 @@ struct MontWindowView: View {
                 .font(.montBlack(11))
                 .foregroundStyle(.white.opacity(MontWhite.dim))
             MontToggle(isOn: model.launchAtLogin) { model.onLaunchAtLogin($0) }
-        }
-        .padding(.top, 4)
-        HStack(spacing: 10) {
-            Text("HIDPI")
-                .font(.montBlack(11))
-                .foregroundStyle(.white.opacity(MontWhite.dim))
-            MontToggle(isOn: configuration.hiDPI) { hiDPI in
-                model.onConfigurationChanged(
-                    DisplayConfiguration(
-                        width: configuration.width,
-                        height: configuration.height,
-                        hiDPI: hiDPI
-                    )
-                )
-            }
         }
         .padding(.vertical, 8)
     }
