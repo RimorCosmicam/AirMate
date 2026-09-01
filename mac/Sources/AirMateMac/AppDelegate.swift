@@ -287,9 +287,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: hiDPI))
         case .requestIDR:
             encoder?.requestKeyframe()
-        case let .pointer(button, x, y):
+        case let .click(x, y):
             guard let displayID = display?.displayID else { return }
-            PointerInput.click(button, x: x, y: y, on: displayID)
+            PointerInput.click(x: x, y: y, on: displayID)
         case let .scroll(phase, x, y, dx, dy):
             guard let displayID = display?.displayID else { return }
             PointerInput.scroll(phase: phase, x: x, y: y, dx: dx, dy: dy, on: displayID)

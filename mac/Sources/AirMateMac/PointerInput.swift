@@ -1,12 +1,14 @@
 import AppKit
 import CoreGraphics
 
-/// Touches on the tablet, as clicks and scrolls on this Mac.
+/// Reading mode: taps and scrolls on the tablet, as a pointer on this Mac.
 ///
-/// The whole point is that the pointer is borrowed rather than taken. A tap on the second screen
-/// moves the cursor there, acts, and puts it back exactly where it was — so the tablet behaves like
-/// a touch screen attached to the Mac instead of a second mouse fighting the first. Without the
-/// restore, reading a page on the tablet would drag the cursor off whatever you were doing.
+/// The pointer is borrowed rather than taken. A tap on the second screen moves the cursor there,
+/// clicks, and puts it back exactly where it was — so the tablet behaves like a page you are
+/// reading rather than a second mouse fighting the first. Without the restore, turning a page on
+/// the tablet would drag the cursor off whatever you were doing.
+///
+/// Clicking and scrolling is the whole vocabulary, which is what a reader needs and no more.
 @MainActor
 enum PointerInput {
     /// Where the cursor was before the gesture in progress started.
@@ -24,12 +26,12 @@ enum PointerInput {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    static func click(_ button: ControlPacket.Button, x: UInt16, y: UInt16, on displayID: CGDirectDisplayID) {
+    static func click(x: UInt16, y: UInt16, on displayID: CGDirectDisplayID) {
         guard isPermitted, let target = point(x: x, y: y, on: displayID) else { return }
         let origin = cursor()
         warp(to: target)
-        post(button, at: target, down: true)
-        post(button, at: target, down: false)
+        post(at: target, down: true)
+        post(at: target, down: false)
         warp(to: origin)
     }
 
@@ -90,22 +92,12 @@ enum PointerInput {
         CGAssociateMouseAndMouseCursorPosition(1)
     }
 
-    private static func post(_ button: ControlPacket.Button, at point: CGPoint, down: Bool) {
-        let type: CGEventType
-        let mouseButton: CGMouseButton
-        switch button {
-        case .left:
-            type = down ? .leftMouseDown : .leftMouseUp
-            mouseButton = .left
-        case .right:
-            type = down ? .rightMouseDown : .rightMouseUp
-            mouseButton = .right
-        }
+    private static func post(at point: CGPoint, down: Bool) {
         CGEvent(
             mouseEventSource: nil,
-            mouseType: type,
+            mouseType: down ? .leftMouseDown : .leftMouseUp,
             mouseCursorPosition: point,
-            mouseButton: mouseButton
+            mouseButton: .left
         )?.post(tap: .cghidEventTap)
     }
 

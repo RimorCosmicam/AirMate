@@ -25,14 +25,15 @@ data class TouchSurface(
 )
 
 /**
- * Touches on the tablet, as a pointer on the Mac.
+ * Reading mode: taps and drags on the tablet, as a pointer on the Mac.
  *
- * One finger taps to click and drags to scroll; two fingers tap for a right click. Nothing is held
- * down and dragged, because the Mac puts the cursor back where it found it after every gesture —
- * a drag that outlived the gesture would leave a button pressed on a screen nobody is looking at.
+ * Tap to click, drag to scroll, and nothing else — the vocabulary of reading rather than of
+ * pointing. Nothing is held down and dragged, because the Mac puts the cursor back where it found
+ * it after every gesture, and a drag that outlived the gesture would leave a button pressed on a
+ * screen nobody is looking at.
  *
- * Reading is what this is for, so scrolling is the gesture that has to feel right: deltas are sent
- * in the display's own pixels, so the page moves exactly as far as the finger did.
+ * Scrolling is the gesture that has to feel right, so deltas are sent in the display's own pixels
+ * and the page moves exactly as far as the finger did.
  */
 class TouchInput(
     context: Context,
@@ -48,7 +49,6 @@ class TouchInput(
     private var lastY = 0f
     private var downAt = 0L
     private var scrolling = false
-    private var multiTouch = false
     private var abandoned = false
 
     /**
@@ -70,11 +70,8 @@ class TouchInput(
                 downAt = event.eventTime
                 lastTouchedSide = if (event.x < view.width / 2f) CardEdge.LEFT else CardEdge.RIGHT
                 scrolling = false
-                multiTouch = false
                 abandoned = !inside(stage, event.x, event.y)
             }
-
-            MotionEvent.ACTION_POINTER_DOWN -> multiTouch = true
 
             MotionEvent.ACTION_MOVE -> {
                 if (abandoned) return true
@@ -103,11 +100,9 @@ class TouchInput(
                 when {
                     scrolling -> send(ControlMessage.scroll(ControlMessage.PHASE_END, x, y, 0, 0))
                     event.eventTime - downAt > tapTimeout -> Unit // A long press is not a click.
-                    multiTouch -> send(ControlMessage.pointer(ControlMessage.BUTTON_RIGHT, x, y))
-                    else -> send(ControlMessage.pointer(ControlMessage.BUTTON_LEFT, x, y))
+                    else -> send(ControlMessage.click(x, y))
                 }
                 scrolling = false
-                multiTouch = false
             }
 
             MotionEvent.ACTION_CANCEL -> {
@@ -117,7 +112,6 @@ class TouchInput(
                     send(ControlMessage.scroll(ControlMessage.PHASE_END, x, y, 0, 0))
                 }
                 scrolling = false
-                multiTouch = false
             }
         }
         return true

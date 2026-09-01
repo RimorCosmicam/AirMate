@@ -15,11 +15,11 @@ class ControlMessageTest {
         )
     }
 
-    @Test fun buildsPointerAtNormalisedCoordinates() {
-        // Centre of the display, right button.
+    @Test fun buildsClickAtNormalisedCoordinates() {
+        // Dead centre of the display, whatever its resolution.
         assertArrayEquals(
-            byteArrayOf(0x41, 0x4D, 0x43, 0x31, 1, 6, 0, 5, 2, 0x7F, 0xFF.toByte(), 0x7F, 0xFF.toByte()),
-            ControlMessage.pointer(ControlMessage.BUTTON_RIGHT, 0x7FFF, 0x7FFF)
+            byteArrayOf(0x41, 0x4D, 0x43, 0x31, 1, 6, 0, 4, 0x7F, 0xFF.toByte(), 0x7F, 0xFF.toByte()),
+            ControlMessage.click(0x7FFF, 0x7FFF)
         )
     }
 

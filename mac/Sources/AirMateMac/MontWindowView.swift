@@ -133,7 +133,7 @@ struct MontWindowView: View {
             }
         }
         HStack(spacing: 10) {
-            Text("TOUCH CONTROL")
+            Text("READING MODE")
                 .font(.montBlack(11))
                 .foregroundStyle(.white.opacity(MontWhite.dim))
             Spacer()
@@ -149,7 +149,7 @@ struct MontWindowView: View {
             .fixedSize()
         }
         if !model.pointerPermitted {
-            MontDetail("Taps and scrolls from the tablet need Accessibility. Without it they do nothing at all.")
+            MontDetail("Tapping and scrolling from the tablet need Accessibility. Without it they do nothing at all.")
         }
         HStack(spacing: 10) {
             Text("START WITH MAC")

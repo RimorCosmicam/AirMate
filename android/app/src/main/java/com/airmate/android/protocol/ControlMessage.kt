@@ -20,11 +20,8 @@ object ControlMessage {
     const val TYPE_STOP = 3
     const val TYPE_SET_DISPLAY = 4
     const val TYPE_REQUEST_IDR = 5
-    const val TYPE_POINTER = 6
+    const val TYPE_CLICK = 6
     const val TYPE_SCROLL = 7
-
-    const val BUTTON_LEFT = 1
-    const val BUTTON_RIGHT = 2
 
     const val PHASE_BEGIN = 0
     const val PHASE_CONTINUE = 1
@@ -47,13 +44,12 @@ object ControlMessage {
      * [x] and [y] are normalised across the display, `0` to `65535`, so neither side has to agree
      * on pixels, points, or whether the display is HiDPI.
      */
-    fun pointer(button: Int, x: Int, y: Int): ByteArray {
-        val payload = ByteBuffer.allocate(5).order(ByteOrder.BIG_ENDIAN)
-            .put(button.toByte())
+    fun click(x: Int, y: Int): ByteArray {
+        val payload = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN)
             .putShort(x.toShort())
             .putShort(y.toShort())
             .array()
-        return build(TYPE_POINTER, payload)
+        return build(TYPE_CLICK, payload)
     }
 
     /**

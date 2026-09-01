@@ -31,7 +31,7 @@ final class AppModel: ObservableObject {
     @Published var welcomeCompleted = UserDefaults.standard.bool(forKey: welcomeKey)
     @Published var launchAtLogin = LoginItem.isEnabled
 
-    /// Whether this Mac will accept touches from the tablet as clicks and scrolls.
+    /// Whether this Mac will accept taps and scrolls from the tablet.
     ///
     /// Accessibility, not Screen Recording — a separate grant, and one that fails silently when it
     /// is missing, so the window has to say so rather than letting taps quietly do nothing.

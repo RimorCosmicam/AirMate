@@ -48,10 +48,10 @@ Sent by Android so the tablet can drive the Mac's display without the user walki
 | 3 | stop display | none |
 | 4 | set display | `u16` width, `u16` height, `u8` flags (bit 0 HiDPI) |
 | 5 | request IDR | none |
-| 6 | pointer | `u8` button (1 left, 2 right), `u16` x, `u16` y |
+| 6 | click | `u16` x, `u16` y |
 | 7 | scroll | `u8` phase (0 begin, 1 continue, 2 end), `u16` x, `u16` y, `i16` dx, `i16` dy |
 
-Pointer coordinates are normalised: `0` is the left or top edge of the streamed display and `65535`
+Click coordinates are normalised: `0` is the left or top edge of the streamed display and `65535`
 the right or bottom, whatever its resolution. The host maps them onto its own display bounds, so
 neither side has to agree on pixels, points, or whether the display is HiDPI — the one place that
 distinction would otherwise leak into the protocol and be wrong on exactly half the configurations.
@@ -62,8 +62,10 @@ once and put it back once, rather than teleporting it on every delta of a flick.
 
 `set display` carrying the running configuration is a no-op rather than a restart, so a client that repeats its state does not tear the display down.
 
-The host restores the pointer to where it was before every pointer and scroll gesture. A second
-screen you touch should not steal the cursor from the screen you are working on.
+Clicking and scrolling is the whole input vocabulary — reading mode, not a second pointing device.
+There is no drag, no right click and no modifier, and the host restores the cursor to where it was
+before every gesture: a second screen you touch should not steal the pointer from the screen you
+are working on.
 
 ### Who may send one
 

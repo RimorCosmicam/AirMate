@@ -320,7 +320,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         )
 
         Box(Modifier.fillMaxSize()) {
-            if (!streaming || leaving) {
+            // Onboarding keeps its ground for the whole of its length, even once frames are
+            // already arriving. Tying this to the stream meant a tour that finished after the video
+            // started was read over live footage with nothing behind it, and the backdrop then
+            // snapped back into existence at the end purely so it could part — a blink, and the
+            // one moment in the app that has to be smooth.
+            if (!onboarded || !streaming || leaving) {
                 StripeBackdrop(split = journey, disconnected = onboarded && everStreamed && !streaming)
             }
             Box(Modifier.alpha(1f - (journey / 0.22f).coerceAtMost(1f))) {
