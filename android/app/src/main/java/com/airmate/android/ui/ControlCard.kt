@@ -99,10 +99,14 @@ fun ControlCard(
 
             Spacer(Modifier.height(10.dp))
             MontLabel("RESOLUTION", alpha = MontWhite.DIM, size = 11)
-            // Whatever is actually running is always in the list, so the row shows where you are
-            // rather than highlighting nothing when the host is on a size we do not offer.
+            // Turned to match the axis, because a portrait display cannot be chosen from a list of
+            // landscape sizes — and whatever is actually running is always in the list, so the row
+            // shows where you are rather than highlighting nothing.
             val running = status?.let { it.width to it.height }
-            val options = (RESOLUTIONS + listOfNotNull(running)).distinct()
+            val oriented = RESOLUTIONS.map { (wide, tall) ->
+                if (axis == ScreenAxis.VERTICAL) tall to wide else wide to tall
+            }
+            val options = (oriented + listOfNotNull(running)).distinct()
             MontChips(
                 options = options.map { "${it.first} × ${it.second}" },
                 selected = options.indexOfFirst { it == running }
@@ -121,7 +125,7 @@ fun ControlCard(
 
             Spacer(Modifier.height(12.dp))
             MontLabel("ROTATION", alpha = MontWhite.DIM, size = 11)
-            MontDetail("Turns on its own within the axis you pick. The host keeps its display as it is, so the picture letterboxes rather than reshaping.")
+            MontDetail("Turns on its own within the axis you pick. The Mac builds a display the same way up, so anything open on it moves to your main screen.")
             MontChips(
                 options = ScreenAxis.entries.map { it.label },
                 selected = axis.ordinal
