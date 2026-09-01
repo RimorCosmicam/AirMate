@@ -21,6 +21,8 @@ final class UDPSender: @unchecked Sendable {
     var onCommand: ((ControlPacket.Command) -> Void)?
     /// A client is asking for control and needs a human. Delivered on the main queue.
     var onControlRequest: ((String) -> Void)?
+    /// A different client has become the video destination. Delivered on the main queue.
+    var onClientChanged: (() -> Void)?
 
     init(port: UInt16 = 48620) throws {
         fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
@@ -79,15 +81,22 @@ final class UDPSender: @unchecked Sendable {
     /// Take this peer as the video destination. Always allowed: it only says where to send video,
     /// which the broadcast hello already does.
     private func adopt(_ peer: sockaddr_in) -> Bool {
-        let accepted = lock.withLock {
-            guard fd >= 0 else { return false }
+        // The hello repeats once a second; only a genuinely new client is worth reacting to.
+        let outcome: (accepted: Bool, changed: Bool) = lock.withLock {
+            guard fd >= 0 else { return (false, false) }
+            let changed = !hasDestination
+                || destination.sin_addr.s_addr != peer.sin_addr.s_addr
+                || destination.sin_port != peer.sin_port
             destination = peer
             hasDestination = true
-            return true
+            return (true, changed)
         }
-        guard accepted else { return false }
+        guard outcome.accepted else { return false }
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = DispatchTime.now().uptimeNanoseconds }
-        Diagnostics.shared.networkLog.info("Android client selected")
+        if outcome.changed {
+            Diagnostics.shared.networkLog.info("Android client selected")
+            DispatchQueue.main.async { [weak self] in self?.onClientChanged?() }
+        }
         return true
     }
 

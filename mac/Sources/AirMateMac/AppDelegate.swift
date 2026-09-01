@@ -203,6 +203,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let sender = try UDPSender()
             sender.onCommand = { [weak self] command in self?.perform(command) }
             sender.onControlRequest = { [weak self] address in self?.model.controlRequest = address }
+            // A client that arrives mid-GOP has nothing it can decode until the next keyframe, and
+            // there is no retransmission for it to ask with. Give it one immediately.
+            sender.onClientChanged = { [weak self] in self?.encoder?.requestKeyframe() }
             let display = try CoreGraphicsVirtualDisplayBackend(
                 width: UInt32(model.configuration.width),
                 height: UInt32(model.configuration.height),

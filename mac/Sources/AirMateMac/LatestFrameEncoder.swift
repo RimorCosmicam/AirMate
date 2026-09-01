@@ -74,6 +74,10 @@ final class LatestFrameEncoder: @unchecked Sendable {
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 120 as CFNumber)
+        // Bounded in seconds as well as in frames. ScreenCaptureKit only delivers a frame when the
+        // display changes, so on a virtual display with nothing moving on it "every 120 frames" can
+        // be minutes away — and until a keyframe arrives the client has nothing it can decode.
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 2 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 60 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: 12_000_000 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits, value: [1_500_000, 1] as CFArray)

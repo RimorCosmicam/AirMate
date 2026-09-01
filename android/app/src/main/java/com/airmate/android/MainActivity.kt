@@ -1,12 +1,16 @@
 package com.airmate.android
 
 import android.graphics.Color
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
 import android.view.View
 import android.widget.FrameLayout
+import androidx.activity.BackEventCompat
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -57,6 +61,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var surfaceView: AspectSurfaceView
     private lateinit var root: FrameLayout
     private var overlay: ComposeView? = null
+    private lateinit var edgeDetector: EdgeGestureDetector
     private var decoder: LowLatencyDecoder? = null
     private var receiver: UdpVideoReceiver? = null
 
@@ -73,6 +78,39 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private var pairingHost: String? = null
     private var pairingPort = 48620
+
+    /// Which edge the pending back gesture started from, when the system will tell us.
+    private var pendingEdge: CardEdge? = null
+
+    /**
+     * Back, while the stream is live, opens the controls rather than leaving.
+     *
+     * Under gesture navigation an inward edge swipe *is* the back gesture, and the system claims it
+     * before any view sees it — so the app was being finished by exactly the gesture meant to open
+     * its menu. Reserving the edges (below) gets the touch back for the strips we are allowed to
+     * claim; this catches every swipe outside them, so the gesture never closes the app by
+     * surprise wherever it starts.
+     */
+    private val backCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackStarted(backEvent: BackEventCompat) {
+            // Only Android 14 and up reports which side the swipe came from.
+            pendingEdge = if (backEvent.swipeEdge == BackEventCompat.EDGE_RIGHT) {
+                CardEdge.RIGHT
+            } else {
+                CardEdge.LEFT
+            }
+        }
+
+        override fun handleOnBackPressed() {
+            if (cardEdge != null) {
+                cardEdge = null
+            } else {
+                cardEdge = pendingEdge ?: edgeDetector.lastTouchedSide ?: CardEdge.LEFT
+            }
+            pendingEdge = null
+            syncOverlay()
+        }
+    }
 
     private val watchStream = object : Runnable {
         override fun run() {
@@ -112,12 +150,15 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 Gravity.CENTER
             )
         )
-        root.setOnTouchListener(EdgeGestureDetector(this) { edge ->
+        edgeDetector = EdgeGestureDetector(this) { edge ->
             if (streaming) {
                 cardEdge = edge
                 syncOverlay()
             }
-        })
+        }
+        root.setOnTouchListener(edgeDetector)
+        onBackPressedDispatcher.addCallback(this, backCallback)
+        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> reserveEdges() }
         setContentView(root)
         syncOverlay()
         root.post(watchStream)
@@ -131,6 +172,28 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
+    }
+
+    /**
+     * Ask the system to leave the edge strips alone.
+     *
+     * Android caps this at 200dp of height per edge, so it cannot cover the whole side — the back
+     * callback handles whatever falls outside. Within these bands the swipe reaches
+     * [EdgeGestureDetector] intact, which is the only way to know for certain which side it came
+     * from on a device older than Android 14.
+     */
+    private fun reserveEdges() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val density = resources.displayMetrics.density
+        val band = (200 * density).toInt()
+        val width = (28 * density).toInt()
+        val top = ((root.height - band) / 2).coerceAtLeast(0)
+        val bottom = (top + band).coerceAtMost(root.height)
+        if (root.width <= 0 || bottom <= top) return
+        root.systemGestureExclusionRects = listOf(
+            Rect(0, top, width, bottom),
+            Rect(root.width - width, top, root.width, bottom)
+        )
     }
 
     private fun enterImmersiveMode() {
@@ -151,6 +214,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * the video.
      */
     private fun syncOverlay() {
+        // Enabled while the stream owns the screen, or while the card is up. Off during pairing,
+        // where back should still do the ordinary thing and leave.
+        backCallback.isEnabled = (streaming && !leaving) || cardEdge != null
         val wanted = !streaming || leaving || cardEdge != null
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
