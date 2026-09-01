@@ -62,6 +62,7 @@ class UdpVideoReceiver(
         val target = macAddress ?: pairingTarget ?: return
         val active = socket ?: return
         val targetPort = if (macAddress != null) macPort else pairingPort
+        Log.d(TAG, "control type=${bytes.getOrNull(5)} -> $target:$targetPort")
         controlThread.execute {
             runCatching { active.send(DatagramPacket(bytes, bytes.size, target, targetPort)) }
                 .onFailure { if (running.get()) Log.e(TAG, "control send failed", it) }

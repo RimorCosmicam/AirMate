@@ -279,9 +279,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * the video.
      */
     private fun syncOverlay() {
-        // Enabled while the stream owns the screen, or while the card is up. Off during pairing,
-        // where back should still do the ordinary thing and leave.
-        backCallback.isEnabled = (streaming && !leaving) || cardEdge != null
+        // Once past onboarding, back always means "show me the controls" and never "leave" — the
+        // way a game pauses rather than quits. Tying this to the stream meant that whenever the
+        // video had not started, or was mid-handover, the gesture silently walked out of the app
+        // instead, which is the one outcome it must never have.
+        backCallback.isEnabled = onboarded
         val wanted = !onboarded || !streaming || leaving || cardEdge != null
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
@@ -398,7 +400,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         settings.axis = next
         requestedOrientation = next.requested
 
-        val current = status ?: return
+        val current = status
+        if (current == null) {
+            Log.d(TAG, "axis $next: no status from the host yet, tablet rotates alone")
+            return
+        }
         val long = maxOf(current.width, current.height)
         val short = minOf(current.width, current.height)
         val width = if (next == ScreenAxis.VERTICAL) short else long
