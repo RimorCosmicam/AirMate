@@ -2,7 +2,9 @@ using System.Buffers.Binary;
 
 namespace AirMate.Protocol;
 
-internal enum ControlKind { Hello, Start, Stop, SetDisplay, RequestIdr }
+internal enum ControlKind { Hello, Start, Stop, SetDisplay, RequestIdr, Click, Scroll, ClientDisplay }
+
+internal enum ScrollPhase { Begin = 0, Continue = 1, End = 2 }
 
 /// <param name="Kind">Which command.</param>
 /// <param name="Width">Set-display only.</param>
@@ -12,6 +14,13 @@ internal enum ControlKind { Hello, Start, Stop, SetDisplay, RequestIdr }
 /// hosts without knowing which it reached.</param>
 internal readonly record struct ControlCommand(ControlKind Kind, int Width, int Height, bool HiDpi)
 {
+    /// <summary>Normalised across the streamed display, 0 to 65535. Click and scroll only.</summary>
+    public ushort X { get; init; }
+    public ushort Y { get; init; }
+    public short Dx { get; init; }
+    public short Dy { get; init; }
+    public ScrollPhase Phase { get; init; }
+
     /// <summary>Whether obeying this would change what the host is doing.</summary>
     /// <remarks><see cref="ControlKind.Hello"/> only names a video destination, which the broadcast
     /// hello already does, so it is always honoured. Everything else waits for a person.</remarks>
@@ -47,6 +56,39 @@ internal static class ControlPacket
                 return new ControlCommand(ControlKind.SetDisplay, width, height, (payload[4] & 1) != 0);
             }
             case 5: return new ControlCommand(ControlKind.RequestIdr, 0, 0, false);
+            case 6:
+            {
+                // Normalised across the streamed display, 0 to 65535 on each axis, so neither end
+                // has to agree on pixels.
+                if (payloadLength < 4) return null;
+                var p = data.Slice(HeaderBytes, 4);
+                return new ControlCommand(ControlKind.Click, 0, 0, false)
+                {
+                    X = BinaryPrimitives.ReadUInt16BigEndian(p[..2]),
+                    Y = BinaryPrimitives.ReadUInt16BigEndian(p.Slice(2, 2))
+                };
+            }
+            case 7:
+            {
+                if (payloadLength < 9) return null;
+                var p = data.Slice(HeaderBytes, 9);
+                if (p[0] > 2) return null;
+                return new ControlCommand(ControlKind.Scroll, 0, 0, false)
+                {
+                    Phase = (ScrollPhase)p[0],
+                    X = BinaryPrimitives.ReadUInt16BigEndian(p.Slice(1, 2)),
+                    Y = BinaryPrimitives.ReadUInt16BigEndian(p.Slice(3, 2)),
+                    Dx = BinaryPrimitives.ReadInt16BigEndian(p.Slice(5, 2)),
+                    Dy = BinaryPrimitives.ReadInt16BigEndian(p.Slice(7, 2))
+                };
+            }
+            case 8:
+            {
+                // The client describing itself. Nothing to act on here: this host mirrors a display
+                // it did not create, so it cannot reshape anything to suit.
+                if (payloadLength < 4) return null;
+                return new ControlCommand(ControlKind.ClientDisplay, 0, 0, false);
+            }
             default: return null;
         }
     }

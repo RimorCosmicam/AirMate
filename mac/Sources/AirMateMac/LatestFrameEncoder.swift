@@ -79,7 +79,14 @@ final class LatestFrameEncoder: @unchecked Sendable {
         // be minutes away — and until a keyframe arrives the client has nothing it can decode.
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 2 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 60 as CFNumber)
-        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: 12_000_000 as CFNumber)
+        // Scaled with the picture, not fixed. Twelve megabits looks fine at 1200 x 720 and starves
+        // 1792 x 1088, which has two and a third times the pixels to spend it on — so the larger
+        // size looked worse than the smaller one, which is the opposite of the point.
+        let pixels = Double(width) * Double(height)
+        let bitrate = Int32(min(40_000_000, max(12_000_000, pixels * 60 * 0.18)))
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrate as CFNumber)
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits,
+                             value: [Double(bitrate) / 8 * 1.5, 1.0] as CFArray)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits, value: [1_500_000, 1] as CFArray)
         VTCompressionSessionPrepareToEncodeFrames(created)
     }

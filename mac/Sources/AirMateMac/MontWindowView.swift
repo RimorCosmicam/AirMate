@@ -98,21 +98,12 @@ struct MontWindowView: View {
     }
 
     @ViewBuilder
-    private func connected(snapshot: StreamSnapshot, configuration: DisplayConfiguration) -> some View {
+    private func connected(snapshot _: StreamSnapshot, configuration: DisplayConfiguration) -> some View {
         MontDetail("AirMate Display is active as your second monitor.")
-        HStack(alignment: .top, spacing: 26) {
-            // Not the resolution: the chips below already say which one is running, and saying it
-            // twice tells you nothing the second time. What the window cannot otherwise show is
-            // what the tablet itself measures — the number you actually want when choosing.
-            MontMetric(
-                title: "TABLET",
-                value: model.clientDisplay.map { "\($0.width) × \($0.height)" } ?? "—"
-            )
-            MontMetric(title: "REFRESH", value: "60 Hz")
-            MontMetric(title: "CODEC", value: "HEVC")
-            MontMetric(title: "FRAMES", value: snapshot.encoded.formatted())
-        }
-        .padding(.vertical, 12)
+        // Nothing else. The tablet's own size is the tablet's business, the refresh rate and the
+        // codec never change, and a running total of frames answers a question nobody asked. The
+        // chips below say which size is running, which is the one fact worth showing.
+        Spacer(minLength: 10)
         displaySettings(configuration)
         preferences
         MontRow(label: "Stop display") { model.onToggleDisplay() }
@@ -149,23 +140,17 @@ struct MontWindowView: View {
     /// What this Mac is doing, which is true whether or not a tablet is here yet.
     @ViewBuilder
     private var preferences: some View {
-        HStack(spacing: 10) {
-            Text("READING MODE")
-                .font(.montBlack(11))
-                .foregroundStyle(.white.opacity(MontWhite.dim))
-            Spacer()
-            // A grant, not a switch: macOS decides this one, and pretending otherwise would make
-            // the control lie whenever the user revokes it in Settings.
-            MontRow(
-                label: model.pointerPermitted ? "Granted" : "Allow…",
-                enabled: !model.pointerPermitted,
-                emphasis: model.pointerPermitted ? MontWhite.dim : MontWhite.active
-            ) {
-                model.onRequestPointerPermission()
-            }
-            .fixedSize()
-        }
+        // Only while there is something to do about it. A row reading GRANTED for the rest of the
+        // app's life is a permanent reminder of a job already finished.
         if !model.pointerPermitted {
+            HStack(spacing: 10) {
+                Text("READING MODE")
+                    .font(.montBlack(11))
+                    .foregroundStyle(.white.opacity(MontWhite.dim))
+                Spacer()
+                MontRow(label: "Allow…") { model.onRequestPointerPermission() }
+                    .fixedSize()
+            }
             MontDetail("Tapping and scrolling from the tablet need Accessibility. Without it they do nothing at all.")
         }
         HStack(spacing: 10) {

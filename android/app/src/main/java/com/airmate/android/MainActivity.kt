@@ -113,7 +113,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
 
         override fun handleOnBackPressed() {
-            Log.d(TAG, "back: card=$cardEdge curtain=$curtainDrawn streaming=$streaming leaving=$leaving onboarded=$onboarded")
             if (cardEdge != null) {
                 cardEdge = null
             } else {
@@ -332,7 +331,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // reinstall — which clears that flag — left back doing nothing at all.
         backCallback.isEnabled = onboarded || streaming
         val wanted = !onboarded || !streaming || leaving || cardEdge != null || curtainDrawn
-        Log.d(TAG, "overlay: wanted=$wanted mounted=${overlay != null} card=$cardEdge curtain=$curtainDrawn streaming=$streaming leaving=$leaving")
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
             overlay = view

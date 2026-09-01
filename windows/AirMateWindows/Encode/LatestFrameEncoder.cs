@@ -73,7 +73,7 @@ internal sealed class LatestFrameEncoder : IDisposable
         UdpSender sender,
         int width,
         int height,
-        int bitrate = 12_000_000)
+        int bitrate = 0)
     {
         MediaFactory.MFStartup();
 
@@ -105,7 +105,13 @@ internal sealed class LatestFrameEncoder : IDisposable
         {
             output.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
             output.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.H264);
-            output.Set(MediaTypeAttributeKeys.AvgBitrate, bitrate);
+            // Scaled with the picture rather than fixed: the same budget spread over twice the
+            // pixels is half the quality, so a larger size would otherwise look worse than a
+            // smaller one.
+            var chosen = bitrate > 0
+                ? bitrate
+                : (int)Math.Clamp((long)width * height * 60 * 18 / 100, 12_000_000, 40_000_000);
+            output.Set(MediaTypeAttributeKeys.AvgBitrate, chosen);
             output.Set(MediaTypeAttributeKeys.InterlaceMode, 2);
             output.Set(MediaTypeAttributeKeys.AllSamplesIndependent, 0);
             SetFrameSize(output, width, height);

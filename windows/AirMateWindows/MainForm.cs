@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using AirMate.Capture;
 using AirMate.Encode;
+using AirMate.Input;
 using AirMate.Net;
 using AirMate.Protocol;
 using QRCoder;
@@ -284,6 +285,7 @@ internal sealed class MainForm : Form
         sender?.Dispose();
         sender = null;
         controlRequest = null;
+        PointerInput.Reset();
         pairingCode.Image = null;
         Render();
     }
@@ -296,6 +298,14 @@ internal sealed class MainForm : Form
             case ControlKind.Start: if (!running) Start(); break;
             case ControlKind.Stop: if (running) Stop(); break;
             case ControlKind.RequestIdr: encoder?.RequestKeyframe(); break;
+            case ControlKind.Click:
+                if (SelectedTarget() is { } clickTarget) PointerInput.Click(command.X, command.Y, clickTarget);
+                break;
+            case ControlKind.Scroll:
+                if (SelectedTarget() is { } scrollTarget) PointerInput.Scroll(command, scrollTarget);
+                break;
+            case ControlKind.ClientDisplay:
+                break;
             case ControlKind.SetDisplay:
                 // Windows mirrors a display it did not create, so its size is not ours to set. The
                 // tablet's resolution chips are honoured on macOS and ignored here rather than

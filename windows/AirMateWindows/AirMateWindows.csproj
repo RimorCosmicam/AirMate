@@ -12,7 +12,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>AirMate</AssemblyName>
     <RootNamespace>AirMate</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <!-- Typed interop for Direct3D 11 and Media Foundation. Hand-written COM declarations for the

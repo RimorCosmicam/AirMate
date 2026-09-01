@@ -26,9 +26,12 @@ Built for the Galaxy Tab A7 and anything like it.
   wherever it was, so the tablet never drags the cursor off the screen you are
   working on.
 - **Comes back with the back gesture** — back opens the host's own controls
-  rather than leaving, the way a game pauses: start and stop, resolution, HiDPI,
-  how the tablet may rotate, and how hard to try before dropping a frame, with
-  the frame rate and loss it is costing you alongside.
+  rather than leaving, the way a game pauses: start and stop, resolution, how the
+  tablet may rotate, and how hard to try before dropping a frame.
+- **Sized for your screen** — the resolutions on offer are worked out from the
+  tablet's own panel, at its own shape, so the picture fills it instead of sitting
+  in bars. Sizes its decoder cannot handle are not offered, because those are not a
+  worse picture but no picture at all.
 - **Turns the way you want** — auto-rotates within one axis at a time, so it
   never half-turns into the other shape while you are reading. Changing axis
   turns the Mac's display too; the stripes close over the picture while it is
@@ -66,9 +69,9 @@ is no second confirmation step, because a device already receiving your screen
 gains nothing by also being asked whether it may change it — see
 `docs/SECURITY.md` for what that does and does not protect.
 
-Resolution and HiDPI apply on macOS, which owns the display it created. Windows
-is mirroring a display it did not create, so it ignores those and says so rather
-than pretending.
+Resolution applies on macOS, which owns the display it created. Windows is
+mirroring a display it did not create, so it ignores that and says so rather than
+pretending. Tapping and scrolling work on both.
 
 Tapping and scrolling need Accessibility on macOS, which is a separate grant from
 Screen Recording. macOS refuses synthesised clicks silently, so the window asks
@@ -107,7 +110,7 @@ ad-hoc signed, not notarized.
 - `mac/` — Swift menu-bar host, virtual display, ScreenCaptureKit, VideoToolbox,
   UDP sender; SwiftUI window
 - `windows/` — C# tray host, DXGI Desktop Duplication, Media Foundation, the same
-  UDP sender; WinForms window
+  UDP sender and the same reading mode; WinForms window
 - `android/` — Kotlin client, UDP reassembly, `MediaCodec`, `SurfaceView`;
   Compose overlay
 - `protocol/` — the wire format, video and control

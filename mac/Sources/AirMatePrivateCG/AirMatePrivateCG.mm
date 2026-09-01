@@ -54,7 +54,12 @@ AMVirtualDisplayHandle AMVirtualDisplayCreate(const char *name, uint32_t width, 
         descriptor.name = [NSString stringWithUTF8String:name];
         descriptor.maxPixelsWide = width;
         descriptor.maxPixelsHigh = height;
-        descriptor.sizeInMillimeters = CGSizeMake(286, 179);
+        // Derived from the resolution, not fixed. macOS reads pixels over millimetres and halves
+        // the logical size once that crosses roughly 150 dpi, so a panel declared 286mm wide was
+        // fine at 1600 pixels and became a 904 x 544 display at 1808. Held near 110 dpi — an
+        // ordinary desktop monitor — the display is whatever was asked for.
+        const double kTargetDPI = 110.0;
+        descriptor.sizeInMillimeters = CGSizeMake(width / kTargetDPI * 25.4, height / kTargetDPI * 25.4);
         descriptor.vendorID = 0x414d;
         descriptor.productID = 1;
         descriptor.serialNum = 1;

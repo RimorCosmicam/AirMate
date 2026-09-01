@@ -29,6 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var permissionSettingsOpened = false
     private var lastError: String?
 
+    /// Where the display sat in the arrangement, so a rebuilt one goes back to the same place.
+    ///
+    /// Changing resolution means destroying the display and making another, and macOS treats that
+    /// as a new monitor: it drops it in the default position off to the right and whatever
+    /// arrangement was set is lost with the old one.
+    private var displayOrigin: CGPoint?
+
     /// The encoded count at the previous tick, to notice when nothing is being produced.
     private var lastEncodedSeen: UInt64 = 0
 
@@ -283,6 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     self?.startingDisplay = false
                     self?.runningConfiguration = configuration
                     self?.lastGoodConfiguration = configuration
+                    self?.restoreDisplayPosition(display.displayID)
                     self?.primeFrames()
                     Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
                     self?.refreshUI()
@@ -340,7 +348,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { await capture.captureStill() }
     }
 
+    /// Put the display back where the last one was.
+    private func restoreDisplayPosition(_ displayID: CGDirectDisplayID) {
+        guard let origin = displayOrigin else { return }
+        var configuration: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else { return }
+        CGConfigureDisplayOrigin(configuration, displayID, Int32(origin.x), Int32(origin.y))
+        CGCompleteDisplayConfiguration(configuration, .permanently)
+    }
+
     private func tearDownDisplay() {
+        // Noted first: once the display is gone there is nothing left to ask where it was, and
+        // asking afterwards is asking nil.
+        if let display { displayOrigin = CGDisplayBounds(display.displayID).origin }
         startingDisplay = false
         capture?.stop()
         capture = nil

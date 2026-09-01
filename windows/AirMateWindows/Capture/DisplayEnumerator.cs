@@ -12,7 +12,9 @@ internal readonly record struct DisplayTarget(
     string DeviceName,
     string Label,
     int Width,
-    int Height);
+    int Height,
+    int Left,
+    int Top);
 
 /// <summary>Every display Windows can hand us, including virtual ones.</summary>
 /// <remarks>
@@ -50,7 +52,9 @@ internal static class DisplayEnumerator
                                 name,
                                 $"{Trim(name)} · {width} × {height}",
                                 width,
-                                height));
+                                height,
+                                bounds.Left,
+                                bounds.Top));
                         }
                     }
                 }
