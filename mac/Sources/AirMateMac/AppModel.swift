@@ -15,12 +15,20 @@ struct DisplayConfiguration: Equatable, Sendable {
     /// The same derivation the client makes, so the two windows offer the same list rather than
     /// each proposing shapes the other does not recognise. Sides are rounded to even numbers,
     /// which every encoder wants and which moves the shape by less than a pixel.
-    static func choices(fitting panel: (width: Int, height: Int)?) -> [(Int, Int)] {
+    static func choices(
+        fitting panel: (width: Int, height: Int)?,
+        within ceiling: (width: Int, height: Int)? = nil
+    ) -> [(Int, Int)] {
         guard let panel, panel.width > 0, panel.height > 0 else { return resolutions }
         func even(_ value: Double) -> Int { Int((value / 2).rounded()) * 2 }
-        let derived = [1.0, 0.875, 0.75, 0.625, 0.5].map { scale in
+        let derived = [1.0, 0.9, 0.8, 0.7, 0.6].map { scale in
             (even(Double(panel.width) * scale), even(Double(panel.height) * scale))
-        }.filter { $0.0 >= 640 && $0.1 >= 480 }
+        }.filter { candidate in
+            guard candidate.0 >= 640, candidate.1 >= 480 else { return false }
+            // Never above what the client can decode. That is not a worse picture, it is none.
+            guard let ceiling, ceiling.width > 0, ceiling.height > 0 else { return true }
+            return candidate.0 <= ceiling.width && candidate.1 <= ceiling.height
+        }
         return derived.isEmpty ? resolutions : derived
     }
     var resolutionLabel: String { "\(width) × \(height)" }
@@ -57,6 +65,12 @@ final class AppModel: ObservableObject {
     /// The tablet's own panel size, once it has said. Nil until then.
     @Published var clientDisplay: (width: Int, height: Int)?
 
+    /// The largest frame the client's decoder will accept, once it has said.
+    ///
+    /// Beyond it there is no picture at all — the decoder answers with a hardware error and dies —
+    /// so the host must never offer a size above it.
+    @Published var clientCeiling: (width: Int, height: Int)?
+
     var onToggleDisplay: () -> Void = {}
     var onOpenPermissionSettings: () -> Void = {}
     var onRestartForPermission: () -> Void = {}
@@ -87,7 +101,7 @@ final class AppModel: ObservableObject {
 
     /// The sizes this window offers, tailored to the client once it has said how big it is.
     var resolutionChoices: [(Int, Int)] {
-        DisplayConfiguration.choices(fitting: clientDisplay)
+        DisplayConfiguration.choices(fitting: clientDisplay, within: clientCeiling)
     }
 
     var pairingURL: String? {

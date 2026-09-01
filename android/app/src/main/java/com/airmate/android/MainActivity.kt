@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.airmate.android.decoder.DecoderLimits
 import com.airmate.android.decoder.LowLatencyDecoder
 import com.airmate.android.network.PairingCode
 import com.airmate.android.network.UdpVideoReceiver
@@ -327,7 +328,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // way a game pauses rather than quits. Tying this to the stream meant that whenever the
         // video had not started, or was mid-handover, the gesture silently walked out of the app
         // instead, which is the one outcome it must never have.
-        backCallback.isEnabled = onboarded
+        // A live picture always has controls behind it. Tying this to onboarding alone meant any
+        // reinstall — which clears that flag — left back doing nothing at all.
+        backCallback.isEnabled = onboarded || streaming
         val wanted = !onboarded || !streaming || leaving || cardEdge != null || curtainDrawn
         Log.d(TAG, "overlay: wanted=$wanted mounted=${overlay != null} card=$cardEdge curtain=$curtainDrawn streaming=$streaming leaving=$leaving")
         if (wanted && overlay == null) {
@@ -532,28 +535,21 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var panelReportedAt = 0L
 
     /**
-     * Ask the host to match this screen, once, on the first connection this tablet ever makes.
+     * Ask the host for the largest size this screen can both fill and decode, once ever.
      *
-     * Anything that is not exactly this panel letterboxes, and the native size is the one people
-     * actually want. Matching rebuilds the host's display, so it happens once, remembered
-     * afterwards — on that first connection there is nothing open on the display to disturb.
+     * That is the size people actually want and the one this app should arrive at without being
+     * asked. It happens on the first connection a tablet makes, when there is nothing open on the
+     * host's display for the rebuild to disturb, and is remembered afterwards.
      */
     private fun fitScreenOnce() {
-        if (settings.fittedScreen || !onboarded || curtainDrawn) return
+        if (settings.fittedScreen || !streaming || curtainDrawn) return
         val panel = panelSize() ?: return
         val current = status ?: return
+        val best = resolutionsFor(panel).firstOrNull() ?: return
         settings.fittedScreen = true
-        // The largest size at this screen's shape that the hardware will actually decode, which on
-        // a panel bigger than its own decoder is not the panel.
-        val fit = resolutionsFor(panel).firstOrNull() ?: return
-        if (fit.first == current.width && fit.second == current.height) return
-
-        // Only draw a curtain over a picture that is actually there. Waiting for the stream before
-        // fitting meant the screen appeared, was covered to say "Fitting", and came back looking
-        // identical — a transition whose entire content was the fact that a transition happened.
-        // Done while pairing, the card is already covering it and there is nothing to hide.
-        if (streaming) beginDisplayChange("Fitting", fit.first, fit.second)
-        send(ControlMessage.setDisplay(fit.first, fit.second, hiDPI = true))
+        if (best.first == current.width && best.second == current.height) return
+        beginDisplayChange("Fitting", best.first, best.second)
+        send(ControlMessage.setDisplay(best.first, best.second, hiDPI = true))
     }
 
     /** This screen's own size, in its current orientation, or null before it has been laid out. */
@@ -578,7 +574,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (size == reportedPanel && now - panelReportedAt < PANEL_REPEAT_NANOS) return
         reportedPanel = size
         panelReportedAt = now
-        send(ControlMessage.clientDisplay(size.first, size.second))
+        val ceiling = DecoderLimits.ceiling() ?: (size.first to size.second)
+        send(ControlMessage.clientDisplay(size.first, size.second, ceiling.first, ceiling.second))
     }
 
     /**

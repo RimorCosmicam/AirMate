@@ -38,6 +38,12 @@ object DecoderLimits {
         return cached
     }
 
+    /** The largest width and height the hardware will accept, or null if it will not say. */
+    fun ceiling(): Pair<Int, Int>? {
+        val caps = capabilities() ?: return null
+        return runCatching { caps.supportedWidths.upper to caps.supportedHeights.upper }.getOrNull()
+    }
+
     /** True when the hardware will decode this size. Unknown capabilities are taken as a yes. */
     fun supports(width: Int, height: Int): Boolean {
         val caps = capabilities() ?: return true

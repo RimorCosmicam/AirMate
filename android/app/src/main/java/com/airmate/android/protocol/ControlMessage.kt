@@ -77,10 +77,14 @@ object ControlMessage {
      * it the Mac can only name the resolution it already picked, which is the one number nobody
      * needs to be told.
      */
-    fun clientDisplay(width: Int, height: Int): ByteArray {
-        val payload = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN)
+    fun clientDisplay(width: Int, height: Int, maxWidth: Int, maxHeight: Int): ByteArray {
+        val payload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
             .putShort(width.coerceIn(0, 65535).toShort())
             .putShort(height.coerceIn(0, 65535).toShort())
+            // What this client's decoder will accept. Without it the host offers sizes that cannot
+            // be decoded at all, and the picture dies the moment one is chosen.
+            .putShort(maxWidth.coerceIn(0, 65535).toShort())
+            .putShort(maxHeight.coerceIn(0, 65535).toShort())
             .array()
         return build(TYPE_CLIENT_DISPLAY, payload)
     }

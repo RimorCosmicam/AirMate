@@ -370,8 +370,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: true))
         case .requestIDR:
             encoder?.requestKeyframe()
-        case let .clientDisplay(width, height):
+        case let .clientDisplay(width, height, maxWidth, maxHeight):
             model.clientDisplay = (Int(width), Int(height))
+            model.clientCeiling = maxWidth > 0 && maxHeight > 0
+                ? (Int(maxWidth), Int(maxHeight))
+                : nil
         case let .click(x, y):
             guard let displayID = display?.displayID else { return }
             PointerInput.click(x: x, y: y, on: displayID)

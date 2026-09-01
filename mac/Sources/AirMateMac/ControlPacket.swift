@@ -19,7 +19,7 @@ enum ControlPacket {
         case click(x: UInt16, y: UInt16)
         case scroll(phase: ScrollPhase, x: UInt16, y: UInt16, dx: Int16, dy: Int16)
         /// What the client's own panel measures, in its pixels and current orientation.
-        case clientDisplay(width: UInt16, height: UInt16)
+        case clientDisplay(width: UInt16, height: UInt16, maxWidth: UInt16, maxHeight: UInt16)
 
         /// Whether obeying this would change what the Mac is doing.
         ///
@@ -68,7 +68,16 @@ enum ControlPacket {
             let width = buffer.readBE16(headerBytes)
             let height = buffer.readBE16(headerBytes + 2)
             guard width > 0, height > 0 else { return nil }
-            return .clientDisplay(width: width, height: height)
+            // Older clients send only their panel size and no decoder ceiling.
+            guard payloadLength >= 8 else {
+                return .clientDisplay(width: width, height: height, maxWidth: 0, maxHeight: 0)
+            }
+            return .clientDisplay(
+                width: width,
+                height: height,
+                maxWidth: buffer.readBE16(headerBytes + 4),
+                maxHeight: buffer.readBE16(headerBytes + 6)
+            )
         default: return nil
         }
     }

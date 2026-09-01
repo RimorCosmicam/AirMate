@@ -34,27 +34,27 @@ import com.airmate.android.ui.mont.MontWhite
 /** Which side the swipe came from, and therefore which side the card opens on. */
 enum class CardEdge { LEFT, RIGHT }
 
-/** Fallback sizes, used only before this screen has measured itself. */
+/** The sizes on offer. Fixed, and the same on both ends. */
 val RESOLUTIONS = listOf(1280 to 800, 1920 to 1080, 1920 to 1200)
 
 /**
- * Five sizes at this screen's own shape, evenly spaced from all of it down to half.
+ * Five sizes at this screen's own shape, from all of it down to three fifths.
  *
- * Derived rather than listed, because a fixed list is a list of other devices' shapes and anything
- * that is not this screen's aspect ratio letterboxes. Sides are rounded to even numbers, which
- * every video encoder wants and which moves the shape by less than a pixel.
+ * Derived rather than listed: a fixed list is a list of other devices' shapes, and anything that is
+ * not this screen's aspect ratio letterboxes. Sizes beyond what this device's decoder will accept
+ * are dropped, because those are not a worse picture but no picture at all — the decoder answers
+ * with a hardware error and dies. The ceiling is asked of the device, so a larger screen with a
+ * larger decoder simply gets larger options.
  */
 fun resolutionsFor(panel: Pair<Int, Int>): List<Pair<Int, Int>> =
-    listOf(1.0, 0.875, 0.75, 0.625, 0.5)
+    listOf(1.0, 0.9, 0.8, 0.7, 0.6)
         .map { scale -> even(panel.first * scale) to even(panel.second * scale) }
         .filter { it.first >= 640 && it.second >= 480 }
-        // Only sizes this device can actually decode. A screen larger than its own decoder is
-        // ordinary — offering its native size then hands the hardware something it answers with
-        // OMX_ErrorHardware, which kills the codec and every frame after it.
         .filter { DecoderLimits.supports(it.first, it.second) }
         .distinct()
 
 private fun even(value: Double): Int = (value.roundToInt() / 2) * 2
+
 
 /**
  * The Mac's own options, on the tablet.
@@ -124,7 +124,7 @@ fun ControlCard(
             // landscape sizes — and whatever is actually running is always in the list, so the row
             // shows where you are rather than highlighting nothing.
             val running = status?.let { it.width to it.height }
-            val sizes = panel?.let(::resolutionsFor)
+            val sizes = panel?.let(::resolutionsFor)?.takeIf { it.isNotEmpty() }
                 ?: RESOLUTIONS.map { (wide, tall) ->
                     if (axis == ScreenAxis.VERTICAL) tall to wide else wide to tall
                 }
