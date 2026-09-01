@@ -9,6 +9,21 @@ final class UDPSender: @unchecked Sendable {
     private var hasDestination = false
     private let sessionID = UInt64.random(in: 1 ... UInt64.max)
 
+    /// The one address allowed to change what this Mac is doing, for the life of this sender.
+    ///
+    /// Not authentication — the transport is unencrypted and a forged source address defeats it.
+    /// It exists so that a device on the LAN cannot restart your display without a human agreeing
+    /// once. See `docs/SECURITY.md`.
+    private var authorisedControl: UInt32?
+    private var pendingControl: UInt32?
+
+    /// A command from an authorised client. Delivered on the main queue.
+    var onCommand: ((ControlPacket.Command) -> Void)?
+    /// A client is asking for control and needs a human. Delivered on the main queue.
+    var onControlRequest: ((String) -> Void)?
+    /// A different client has become the video destination. Delivered on the main queue.
+    var onClientChanged: (() -> Void)?
+
     init(port: UInt16 = 48620) throws {
         fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         guard fd >= 0 else { throw POSIXError(.ENOTSOCK) }
@@ -37,7 +52,7 @@ final class UDPSender: @unchecked Sendable {
     }
 
     private func receiveHellos() {
-        var buffer = [UInt8](repeating: 0, count: 64)
+        var buffer = [UInt8](repeating: 0, count: 256)
         while true {
             var peer = sockaddr_in()
             var length = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -51,21 +66,90 @@ final class UDPSender: @unchecked Sendable {
                 return (count, errno)
             }
             guard let result else { break }
+
             if result.count == 8, String(bytes: buffer[0..<8], encoding: .ascii) == "AMHELLO1" {
-                let accepted = lock.withLock {
-                    guard fd >= 0 else { return false }
-                    destination = peer
-                    hasDestination = true
-                    return true
-                }
-                guard accepted else { break }
-                Diagnostics.shared.mutate { $0.lastClientHelloNanos = DispatchTime.now().uptimeNanoseconds }
-                Diagnostics.shared.networkLog.info("Android client selected")
+                guard adopt(peer) else { break }
+            } else if result.count > 0, let command = ControlPacket.parse(buffer, count: result.count) {
+                guard handle(command, from: peer) else { break }
             } else if result.count < 0 && result.error != EAGAIN && result.error != EWOULDBLOCK {
                 Diagnostics.shared.networkLog.error("recvfrom failed: \(result.error)")
             }
             usleep(2_000)
         }
+    }
+
+    /// Take this peer as the video destination. Always allowed: it only says where to send video,
+    /// which the broadcast hello already does.
+    private func adopt(_ peer: sockaddr_in) -> Bool {
+        // The hello repeats once a second; only a genuinely new client is worth reacting to.
+        let outcome: (accepted: Bool, changed: Bool) = lock.withLock {
+            guard fd >= 0 else { return (false, false) }
+            let changed = !hasDestination
+                || destination.sin_addr.s_addr != peer.sin_addr.s_addr
+                || destination.sin_port != peer.sin_port
+            destination = peer
+            hasDestination = true
+            return (true, changed)
+        }
+        guard outcome.accepted else { return false }
+        Diagnostics.shared.mutate { $0.lastClientHelloNanos = DispatchTime.now().uptimeNanoseconds }
+        if outcome.changed {
+            Diagnostics.shared.networkLog.info("Android client selected")
+            DispatchQueue.main.async { [weak self] in self?.onClientChanged?() }
+        }
+        return true
+    }
+
+    private func handle(_ command: ControlPacket.Command, from peer: sockaddr_in) -> Bool {
+        guard command.changesState else { return adopt(peer) }
+
+        let source = peer.sin_addr.s_addr
+        let authorised = lock.withLock { authorisedControl == source }
+        if authorised {
+            DispatchQueue.main.async { [weak self] in self?.onCommand?(command) }
+            return true
+        }
+
+        // Raise the question once per address and drop the datagram. It is not queued and not
+        // replayed once permission is given — a command that arrived before anyone agreed to it
+        // should not take effect the moment they do.
+        let alreadyAsking = lock.withLock {
+            let asking = pendingControl == source
+            pendingControl = source
+            return asking
+        }
+        if !alreadyAsking {
+            let address = Self.addressString(peer)
+            Diagnostics.shared.networkLog.info("Control requested by \(address, privacy: .public)")
+            DispatchQueue.main.async { [weak self] in self?.onControlRequest?(address) }
+        }
+        return true
+    }
+
+    /// Grant or refuse the address currently asking.
+    func resolveControlRequest(allow: Bool) {
+        lock.withLock {
+            if allow { authorisedControl = pendingControl }
+            pendingControl = nil
+        }
+    }
+
+    func sendStatus(running: Bool, hiDPI: Bool, width: Int, height: Int, encodedFrames: UInt64) {
+        let target: (address: sockaddr_in, authorised: Bool)? = lock.withLock {
+            guard fd >= 0, hasDestination else { return nil }
+            return (destination, authorisedControl == destination.sin_addr.s_addr)
+        }
+        guard let target else { return }
+        var address = target.address
+        let packet = StatusPacket.datagram(
+            running: running,
+            hiDPI: hiDPI,
+            authorised: target.authorised,
+            width: width,
+            height: height,
+            encodedFrames: encodedFrames
+        )
+        _ = send(packet, to: &address)
     }
 
     func send(accessUnit: Data, frameID: UInt64, captureNanos: UInt64, keyframe: Bool, hevc: Bool) {
@@ -82,21 +166,31 @@ final class UDPSender: @unchecked Sendable {
                                               captureNanos: captureNanos,
                                               fragmentIndex: UInt16(index), fragmentCount: UInt16(count),
                                               flags: flags, payload: accessUnit[start..<end])
-            let sent = lock.withLock {
-                guard fd >= 0 else { return -1 }
-                return packet.withUnsafeBytes { bytes in
-                    withUnsafePointer(to: &target) { pointer in
-                        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                            sendto(fd, bytes.baseAddress, bytes.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-                        }
-                    }
-                }
-            }
-            if sent != packet.count {
+            if send(packet, to: &target) != packet.count {
                 Diagnostics.shared.mutate { $0.droppedNetwork += 1 }
                 return
             }
         }
+    }
+
+    private func send(_ packet: Data, to target: inout sockaddr_in) -> Int {
+        lock.withLock {
+            guard fd >= 0 else { return -1 }
+            return packet.withUnsafeBytes { bytes in
+                withUnsafePointer(to: &target) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        sendto(fd, bytes.baseAddress, bytes.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+            }
+        }
+    }
+
+    private static func addressString(_ peer: sockaddr_in) -> String {
+        var source = peer.sin_addr
+        var text = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+        inet_ntop(AF_INET, &source, &text, socklen_t(INET_ADDRSTRLEN))
+        return String(cString: text)
     }
 
     func close() {

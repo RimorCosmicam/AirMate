@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import SwiftUI
 
 @main
 @MainActor
@@ -15,6 +16,7 @@ enum AirMateMain {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private let model = AppModel()
     private var statusItem: NSStatusItem!
     private var window: NSWindow?
     private var display: VirtualDisplayBackend?
@@ -26,21 +28,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var startingDisplay = false
     private var permissionSettingsOpened = false
     private var lastError: String?
-    private var configuration = DisplayConfiguration(width: 1920, height: 1080, hiDPI: true)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        MontFont.register()
+        if let icon = Bundle.main.image(forResource: "AppIcon") {
+            NSApp.applicationIconImage = icon
+        }
         ApplicationMenu.install(target: self)
         NSApp.setActivationPolicy(.accessory)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.toolTip = "AirMate wireless display"
-            if let icon = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "AirMate") {
-                icon.isTemplate = true
-                button.image = icon
-            } else {
-                button.image = fallbackMenuBarIcon()
-            }
+            button.image = menuBarIcon()
         }
+
+        model.onToggleDisplay = { [weak self] in
+            guard let self else { return }
+            self.display == nil ? self.startDisplay() : self.stopDisplay()
+        }
+        model.onOpenPermissionSettings = { [weak self] in self?.openPermissionSettings() }
+        model.onRestartForPermission = { [weak self] in self?.restartForPermission() }
+        model.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
+        model.onConfigurationChanged = { [weak self] in self?.applyConfiguration($0) }
+        model.onControlDecision = { [weak self] allow in self?.resolveControlRequest(allow) }
+        model.onLaunchAtLogin = { [weak self] wanted in
+            // Read the state back: a login item the user has denied in System Settings stays
+            // denied, and a switch that lies about that is worse than no switch.
+            self?.model.launchAtLogin = LoginItem.set(wanted)
+        }
+        model.onClose = { [weak self] in self?.window?.performClose(nil) }
+
         diagnosticsTimer = Timer.scheduledTimer(
             timeInterval: 1,
             target: self,
@@ -53,18 +70,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    private func fallbackMenuBarIcon() -> NSImage {
+    /// A drawn mark rather than an SF Symbol: Mont's own shapes, and it matches the app icon's
+    /// screen rather than borrowing a system glyph.
+    private func menuBarIcon() -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSColor.labelColor.setStroke()
-            let corners = NSBezierPath()
-            corners.move(to: NSPoint(x: 7, y: 15)); corners.line(to: NSPoint(x: 3, y: 15)); corners.line(to: NSPoint(x: 3, y: 11))
-            corners.move(to: NSPoint(x: 11, y: 15)); corners.line(to: NSPoint(x: 15, y: 15)); corners.line(to: NSPoint(x: 15, y: 11))
-            corners.move(to: NSPoint(x: 7, y: 3)); corners.line(to: NSPoint(x: 3, y: 3)); corners.line(to: NSPoint(x: 3, y: 7))
-            corners.move(to: NSPoint(x: 11, y: 3)); corners.line(to: NSPoint(x: 15, y: 3)); corners.line(to: NSPoint(x: 15, y: 7))
-            corners.lineWidth = 1.7
-            corners.lineCapStyle = .round
-            corners.lineJoinStyle = .round
-            corners.stroke()
+            let screen = NSBezierPath(rect: NSRect(x: 2.5, y: 4.5, width: 13, height: 9))
+            screen.lineWidth = 1.6
+            screen.stroke()
             return true
         }
         image.isTemplate = true
@@ -93,10 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func refreshUI() {
         rebuildMenu()
-        guard let controller = window?.contentViewController as? MainViewController else { return }
 
         guard CGPreflightScreenCaptureAccess() else {
-            controller.render(.permissionRequired(restartReady: permissionSettingsOpened))
+            model.state = .permissionRequired(restartReady: permissionSettingsOpened)
+            publishStatus()
             return
         }
         if wantsDisplayRunning && display == nil && !startingDisplay && lastError == nil {
@@ -104,23 +117,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         if startingDisplay {
-            controller.render(.starting)
+            model.state = .starting
         } else if let lastError {
-            controller.render(.failed(lastError))
+            model.state = .failed(lastError)
         } else if display == nil {
-            controller.render(.stopped(configuration: configuration))
+            model.state = .stopped(configuration: model.configuration)
         } else {
             let snapshot = Diagnostics.shared.snapshot()
             if clientIsConnected(snapshot) {
-                if snapshot.encoded == 0 {
-                    controller.render(.connectingVideo)
-                } else {
-                    controller.render(.connected(snapshot: snapshot, configuration: configuration))
-                }
+                model.state = snapshot.encoded == 0
+                    ? .connectingVideo
+                    : .connected(snapshot: snapshot, configuration: model.configuration)
             } else {
-                controller.render(.waitingForAndroid(pairingURL: PairingAddress.url(port: 48620)))
+                model.state = .waitingForAndroid(pairingURL: PairingAddress.url(port: 48620))
             }
         }
+        publishStatus()
+    }
+
+    /// Tell the tablet what this Mac is doing, so its control card can describe a display that is
+    /// stopped and sending no video.
+    private func publishStatus() {
+        sender?.sendStatus(
+            running: display != nil,
+            hiDPI: model.configuration.hiDPI,
+            width: model.configuration.width,
+            height: model.configuration.height,
+            encodedFrames: Diagnostics.shared.snapshot().encoded
+        )
     }
 
     private func clientIsConnected(_ snapshot: StreamSnapshot) -> Bool {
@@ -130,32 +154,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func openWindow() {
         if window == nil {
-            let viewController = MainViewController()
-            viewController.onToggleDisplay = { [weak self] in
-                guard let self else { return }
-                self.display == nil ? self.startDisplay() : self.stopDisplay()
-            }
-            viewController.onOpenPermissionSettings = { [weak self] in self?.openPermissionSettings() }
-            viewController.onRestartForPermission = { [weak self] in self?.restartForPermission() }
-            viewController.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
-            viewController.onConfigurationChanged = { [weak self] newConfiguration in
-                self?.applyConfiguration(newConfiguration)
-            }
-            viewController.onPreferredHeightChanged = { [weak self] height in
-                guard let window = self?.window, abs(window.contentLayoutRect.height - height) > 2 else { return }
-                window.setContentSize(NSSize(width: 540, height: height))
-            }
-
-            let created = NSWindow(contentViewController: viewController)
+            let created = NSWindow(contentViewController: NSHostingController(rootView: MontWindowView(model: model)))
             created.title = "AirMate"
             created.titleVisibility = .hidden
             created.delegate = self
+            // Closable stays in the mask so Cmd+W has something to act on; the buttons themselves
+            // are hidden, because the window says Close in words like every other Mont surface.
             created.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             created.titlebarAppearsTransparent = true
-            created.backgroundColor = .clear
-            created.isOpaque = false
-            created.setContentSize(NSSize(width: 540, height: 300))
-            created.minSize = NSSize(width: 520, height: 210)
+            created.isMovableByWindowBackground = true
+            created.backgroundColor = .black
+            created.standardWindowButton(.closeButton)?.isHidden = true
+            created.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            created.standardWindowButton(.zoomButton)?.isHidden = true
+            created.setContentSize(NSSize(width: 420, height: 380))
             created.center()
             created.isReleasedWhenClosed = false
             window = created
@@ -189,20 +201,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         do {
             let sender = try UDPSender()
+            sender.onCommand = { [weak self] command in self?.perform(command) }
+            sender.onControlRequest = { [weak self] address in self?.model.controlRequest = address }
+            // A client that arrives mid-GOP has nothing it can decode until the next keyframe, and
+            // there is no retransmission for it to ask with. Give it one immediately.
+            sender.onClientChanged = { [weak self] in self?.encoder?.requestKeyframe() }
             let display = try CoreGraphicsVirtualDisplayBackend(
-                width: UInt32(configuration.width),
-                height: UInt32(configuration.height),
-                hiDPI: configuration.hiDPI
+                width: UInt32(model.configuration.width),
+                height: UInt32(model.configuration.height),
+                hiDPI: model.configuration.hiDPI
             )
             let encoder = try LatestFrameEncoder(
-                width: Int32(configuration.width),
-                height: Int32(configuration.height),
+                width: Int32(model.configuration.width),
+                height: Int32(model.configuration.height),
                 sender: sender
             )
             let capture = DisplayCapture(
                 displayID: display.displayID,
-                width: configuration.width,
-                height: configuration.height,
+                width: model.configuration.width,
+                height: model.configuration.height,
                 encoder: encoder
             )
             self.sender = sender
@@ -247,12 +264,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender = nil
         display?.stop()
         display = nil
+        model.controlRequest = nil
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
     }
 
+    /// A command from the tablet, already checked against the authorised address.
+    private func perform(_ command: ControlPacket.Command) {
+        switch command {
+        case .hello:
+            break
+        case .start:
+            startDisplay()
+        case .stop:
+            stopDisplay()
+        case let .setDisplay(width, height, hiDPI):
+            applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: hiDPI))
+        case .requestIDR:
+            encoder?.requestKeyframe()
+        }
+    }
+
+    private func resolveControlRequest(_ allow: Bool) {
+        sender?.resolveControlRequest(allow: allow)
+        model.controlRequest = nil
+        if allow { Diagnostics.shared.networkLog.info("Control authorised by the user") }
+    }
+
     private func applyConfiguration(_ newConfiguration: DisplayConfiguration) {
-        guard newConfiguration != configuration else { return }
-        configuration = newConfiguration
+        guard newConfiguration != model.configuration else { return }
+        model.configuration = newConfiguration
         lastError = nil
         if display != nil || startingDisplay {
             tearDownDisplay()

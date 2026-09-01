@@ -15,6 +15,7 @@ final class LatestFrameEncoder: @unchecked Sendable {
     private var session: VTCompressionSession?
     private var encoding = false
     private var pending: CapturedFrame?
+    private var forceKeyframe = false
     private let sender: UDPSender
     private let width: Int32
     private let height: Int32
@@ -26,6 +27,15 @@ final class LatestFrameEncoder: @unchecked Sendable {
         self.sender = sender
         self.hevc = preferHEVC
         try createSession()
+    }
+
+    /// Ask for the next encoded frame to be an IDR.
+    ///
+    /// There is no retransmission, so a client that has lost part of a reference frame stays
+    /// broken until the next scheduled keyframe — up to two seconds at this GOP. This is how it
+    /// asks for one sooner.
+    func requestKeyframe() {
+        stateLock.withLock { forceKeyframe = true }
     }
 
     func submit(_ frame: CapturedFrame) {
@@ -64,6 +74,10 @@ final class LatestFrameEncoder: @unchecked Sendable {
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 120 as CFNumber)
+        // Bounded in seconds as well as in frames. ScreenCaptureKit only delivers a frame when the
+        // display changes, so on a virtual display with nothing moving on it "every 120 frames" can
+        // be minutes away — and until a keyframe arrives the client has nothing it can decode.
+        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 2 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 60 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: 12_000_000 as CFNumber)
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits, value: [1_500_000, 1] as CFArray)
@@ -75,10 +89,18 @@ final class LatestFrameEncoder: @unchecked Sendable {
         let metadata = FrameMetadata(id: frame.id, captureNanos: frame.captureNanos)
         let refcon = Unmanaged.passRetained(metadata).toOpaque()
         var flags = VTEncodeInfoFlags()
+        let forced = stateLock.withLock {
+            let wanted = forceKeyframe
+            forceKeyframe = false
+            return wanted
+        }
+        let properties = forced
+            ? [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue] as CFDictionary
+            : nil
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: frame.pixelBuffer,
             presentationTimeStamp: CMTime(value: CMTimeValue(frame.id), timescale: 60),
-            duration: CMTime(value: 1, timescale: 60), frameProperties: nil,
+            duration: CMTime(value: 1, timescale: 60), frameProperties: properties,
             sourceFrameRefcon: refcon, infoFlagsOut: &flags
         )
         if status != noErr {

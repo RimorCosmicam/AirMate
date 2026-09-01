@@ -6,3 +6,6 @@ android/local.properties
 android/app/build/
 *.iml
 
+windows/**/bin/
+windows/**/obj/
+windows/**/dist/
