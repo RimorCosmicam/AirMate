@@ -15,6 +15,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +26,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
@@ -41,6 +46,8 @@ import com.airmate.android.ui.TouchSurface
 import com.airmate.android.ui.OnboardingScreen
 import com.airmate.android.ui.PairingScreen
 import com.airmate.android.ui.StripeBackdrop
+import com.airmate.android.ui.mont.MontSurface
+import com.airmate.android.ui.mont.MontLabel
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -120,6 +127,15 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     /** When the stream first looked unwell, or zero while it looks fine. */
     private var troubledSince = 0L
 
+    // Changing the host's display means destroying and rebuilding it, so the picture goes away for
+    // a second whatever we do. Rather than hide that, the stripes close over it and open again on
+    // the new shape — the same ground the app arrived on, run backwards and then forwards.
+    private var curtainDrawn by mutableStateOf(false)
+    private var curtainClosed by mutableStateOf(false)
+    private var curtainLabel by mutableStateOf("ROTATING")
+    private var awaitedShape: Pair<Int, Int>? = null
+    private var curtainSince = 0L
+
     // Measured rather than promised: the frame-skip setting is only worth choosing between if you
     // can see what it costs and what it saves.
     private var fps by mutableIntStateOf(0)
@@ -165,7 +181,24 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
             sampleRates()
             reportPanelSize()
+            settleCurtain(now)
             root.postDelayed(this, 500)
+        }
+    }
+
+    /**
+     * Open the curtain once the host is back in the shape we asked for.
+     *
+     * Bounded, because it may never be: a host mirroring a display it did not create ignores the
+     * request entirely and would otherwise leave the screen behind a curtain for good.
+     */
+    private fun settleCurtain(now: Long) {
+        if (!curtainClosed) return
+        val wanted = awaitedShape
+        val arrived = wanted != null && status?.width == wanted.first && status?.height == wanted.second
+        if (arrived || now - curtainSince >= CURTAIN_PATIENCE_NANOS) {
+            awaitedShape = null
+            curtainClosed = false
         }
     }
 
@@ -257,7 +290,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // video had not started, or was mid-handover, the gesture silently walked out of the app
         // instead, which is the one outcome it must never have.
         backCallback.isEnabled = onboarded
-        val wanted = !onboarded || !streaming || leaving || cardEdge != null
+        val wanted = !onboarded || !streaming || leaving || cardEdge != null || curtainDrawn
         if (wanted && overlay == null) {
             val view = ComposeView(this).apply { setContent { Overlay() } }
             overlay = view
@@ -275,8 +308,47 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * The stripes drawn back across the picture while the host rebuilds its display.
+     *
+     * The same ground the app arrived on, run backwards and then forwards again: it closes over the
+     * video, holds while the display is destroyed and remade, and opens on the new shape. The wait
+     * is real and cannot be removed, so it is dressed rather than hidden.
+     */
+    @Composable
+    private fun Curtain() {
+        val curtain by animateFloatAsState(
+            targetValue = if (curtainClosed) 1f else 0f,
+            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            label = "curtain",
+            finishedListener = {
+                if (it == 0f) root.post { curtainDrawn = false; syncOverlay() }
+            }
+        )
+        Box(Modifier.fillMaxSize()) {
+            // Split runs the other way here: 1 is parted, 0 is closed over the picture.
+            StripeBackdrop(split = 1f - curtain)
+            Box(
+                Modifier.fillMaxSize().alpha(curtain),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    Modifier
+                        .background(MontSurface)
+                        .padding(horizontal = 44.dp, vertical = 30.dp)
+                ) {
+                    MontLabel(curtainLabel, size = 40)
+                }
+            }
+        }
+    }
+
     @Composable
     private fun Overlay() {
+        if (curtainDrawn) {
+            Curtain()
+            return
+        }
         // The ground parts along the bands' own axis, revealing the stream already running behind
         // it. The card goes first, and faster than the ground it is standing on.
         val journey by animateFloatAsState(
@@ -320,7 +392,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                             send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
                         },
                         onResolution = { width, height ->
+                            val current = status
+                            if (current == null || width != current.width || height != current.height) {
+                                // Same rebuild, same wait, same curtain.
+                                beginDisplayChange("Resizing", width, height)
+                            }
                             send(ControlMessage.setDisplay(width, height, status?.hiDPI ?: true))
+                            syncOverlay()
                         },
                         onHiDPI = { hiDPI ->
                             val current = status
@@ -373,6 +451,23 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * A host that mirrors a display it did not create ignores this, as it should: that display's
      * shape is not AirMate's to set. The tablet still rotates either way.
      */
+    /**
+     * Draw the curtain across, and wait for the host to come back in the shape we asked for.
+     *
+     * Mounted a frame before it starts closing: the animation reads its opening value from the
+     * first composition, so a curtain that appears already closing would simply snap shut.
+     */
+    private fun beginDisplayChange(label: String, width: Int, height: Int) {
+        curtainLabel = label
+        awaitedShape = width to height
+        curtainSince = System.nanoTime()
+        curtainDrawn = true
+        // The card asked for this; it should not be sitting there when the picture comes back.
+        cardEdge = null
+        syncOverlay()
+        root.post { curtainClosed = true }
+    }
+
     private fun applyAxis(next: ScreenAxis) {
         axis = next
         settings.axis = next
@@ -388,6 +483,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val width = if (next == ScreenAxis.VERTICAL) short else long
         val height = if (next == ScreenAxis.VERTICAL) long else short
         if (width != current.width || height != current.height) {
+            beginDisplayChange("Rotating", width, height)
             send(ControlMessage.setDisplay(width, height, current.hiDPI))
         }
     }
@@ -424,7 +520,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
      */
     private fun touchSurface(): TouchSurface? {
         val current = status ?: return null
-        if (!streaming || cardEdge != null) return null
+        // Nothing is where it looks like it is while the display is being rebuilt.
+        if (!streaming || cardEdge != null || curtainDrawn) return null
         if (surfaceView.width <= 0 || surfaceView.height <= 0) return null
         return TouchSurface(
             left = surfaceView.left,
@@ -531,5 +628,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         const val TAG = "AirMate.Android"
         /** How long the Mac may go quiet before the tablet stops believing in it. */
         const val HOST_SILENCE_NANOS = 4_000_000_000L
+        /** How long to hold the curtain for a host that may never change shape. */
+        const val CURTAIN_PATIENCE_NANOS = 6_000_000_000L
     }
 }
