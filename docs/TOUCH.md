@@ -64,6 +64,28 @@ genuinely touch-capable display, dump the IORegistry around both the display ser
 digitizer service, and compare that structure against AirMate's virtual display. The missing
 relationship is what to implement.
 
+## Rotating the virtual display: measured, and abandoned
+
+Turning the Mac's display with the tablet was tried three ways. All three are recorded here so the
+fourth attempt starts from evidence.
+
+1. **Re-mode a running display** — `applySettings:` carrying new modes. Refused every time on a
+   live display, logged as `In-place resize refused`.
+2. **Destroy and recreate at the new size** — accepted, and destructive. macOS is handed a
+   different display, so every window on the old one is stranded and the replacement starts empty.
+   The client, receiving nothing on the new session, kept showing the last frame of the old one,
+   scaled into the new geometry: a frozen, stretched still.
+3. **`CGVirtualDisplaySettings.rotation`** — the property exists, has a `setRotation:`, and
+   `applySettings:` **accepts it**, logged as `rotated to 90°`. But it does not rotate the
+   framebuffer: the display stays landscape while the capture is reconfigured to portrait, giving a
+   small landscape image inside a portrait panel. Worse, handing `display.modes` back through
+   `applySettings:` corrupts the display's effective size — after a round trip the capture showed
+   only the top-left quadrant.
+
+So the client rotates alone and the picture letterboxes. It is a smaller image, it is instant, it
+keeps every window where it was, and it cannot fail. Anyone revisiting this needs to establish what
+actually drives the framebuffer's orientation, because the rotation property is not it.
+
 ## Order of work
 
 The entitlement has a long lead time and only the account holder can request it, so it should be

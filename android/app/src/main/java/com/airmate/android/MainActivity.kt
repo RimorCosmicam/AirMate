@@ -459,15 +459,17 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     /**
-     * Turn the tablet, and turn the Mac's display to match.
+     * Turn the tablet. The host's display is left exactly as it is.
      *
-     * Rotating only the tablet leaves a landscape desktop letterboxed into a portrait panel, which
-     * is a smaller picture rather than a taller one. The host is asked to turn its display too, by
-     * swapping the side lengths it already reported — so this follows whatever size is actually in
-     * use rather than assuming one.
+     * Asking the host to turn with it was tried twice and cost more than it bought. Re-moding a
+     * running display is a reconfiguration macOS refuses, and the rebuild it forces destroys the
+     * display — stranding every window on it and leaving the client holding a frozen frame of
+     * something that no longer exists. `CGVirtualDisplaySettings.rotation` is accepted but does not
+     * rotate the framebuffer, and handing the read-back modes back through `applySettings:`
+     * corrupts the display's size.
      *
-     * A host that mirrors a display it did not create ignores this, as it should: that display's
-     * shape is not AirMate's to set. The tablet still rotates either way.
+     * So the picture letterboxes into portrait instead. That is a smaller image and an honest one,
+     * and rotation is instant, keeps every window where it was, and cannot fail.
      */
     /**
      * Draw the curtain across, and wait for the host to come back in the shape we asked for.
@@ -496,19 +498,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         settings.axis = next
         requestedOrientation = next.requested
 
-        val current = status
-        if (current == null) {
-            Log.d(TAG, "axis $next: no status from the host yet, tablet rotates alone")
-            return
-        }
-        val long = maxOf(current.width, current.height)
-        val short = minOf(current.width, current.height)
-        val width = if (next == ScreenAxis.VERTICAL) short else long
-        val height = if (next == ScreenAxis.VERTICAL) long else short
-        if (width != current.width || height != current.height) {
-            beginDisplayChange("Rotating", width, height)
-            send(ControlMessage.setDisplay(width, height, current.hiDPI))
-        }
     }
 
     private fun applyLeniency(next: FrameLeniency) {

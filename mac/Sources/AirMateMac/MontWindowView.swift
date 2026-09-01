@@ -120,7 +120,9 @@ struct MontWindowView: View {
     @ViewBuilder
     private func settings(_ configuration: DisplayConfiguration) -> some View {
         HStack(spacing: 14) {
-            ForEach(DisplayConfiguration.resolutions, id: \.0) { resolution in
+            // Identified by position, not by width: 1920 × 1080 and 1920 × 1200 share a width, so
+            // keying on it gave two chips the same identity and SwiftUI drew one of them twice.
+            ForEach(Array(DisplayConfiguration.resolutions.enumerated()), id: \.offset) { _, resolution in
                 MontChip(
                     label: "\(resolution.0) × \(resolution.1)",
                     selected: resolution.0 == configuration.width && resolution.1 == configuration.height

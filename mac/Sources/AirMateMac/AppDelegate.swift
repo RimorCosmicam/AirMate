@@ -29,9 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var permissionSettingsOpened = false
     private var lastError: String?
 
-    /// The display's current rotation in degrees, which is a transform and not a mode.
-    private var displayRotation: UInt32 = 0
-
     /// The encoded count at the previous tick, to notice when nothing is being produced.
     private var lastEncodedSeen: UInt64 = 0
 
@@ -315,7 +312,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         display?.stop()
         display = nil
         runningConfiguration = nil
-        displayRotation = 0
         PointerInput.reset()
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }
     }
@@ -349,101 +345,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.configuration = newConfiguration
         lastError = nil
 
-        // Turning the display on its side is a rotation, not a new mode. Re-moding a running
-        // display is a reconfiguration macOS refuses outright, and the rebuild it forces strands
-        // every window that was on it — which is what left the client holding a frozen frame of a
-        // display that no longer existed.
-        if let display, !startingDisplay, let running = runningConfiguration,
-           newConfiguration.width == running.height,
-           newConfiguration.height == running.width,
-           newConfiguration.hiDPI == running.hiDPI,
-           rotateInPlace(display, to: newConfiguration) {
-            return
-        }
-
         if display != nil || startingDisplay {
             tearDownDisplay()
             startDisplay()
         } else {
             refreshUI()
         }
-    }
-
-    /// Returns false if this display will not rotate, leaving the caller to rebuild it.
-    private func rotateInPlace(_ display: VirtualDisplayBackend, to configuration: DisplayConfiguration) -> Bool {
-        // The property is an unsigned int, and nothing says whether it counts degrees or quarter
-        // turns. Both spellings of a quarter turn are tried before giving up and rebuilding, since
-        // the cost of guessing wrong is every window on the display.
-        let candidates: [UInt32] = displayRotation == 0 ? [90, 1] : [0]
-        var turned: UInt32?
-        var refusal: String = "no rotation accepted"
-        for candidate in candidates {
-            do {
-                try display.rotate(degrees: candidate)
-                turned = candidate
-                break
-            } catch {
-                refusal = error.localizedDescription
-            }
-        }
-        guard let turned else {
-            Diagnostics.shared.displayLog.error(
-                "Rotation refused, rebuilding the display: \(refusal, privacy: .public)"
-            )
-            return false
-        }
-        displayRotation = turned
-
-        // The capture and the encoder are both sized, so they are replaced — but the display, its
-        // ID, and the socket the client is already paired to all survive.
-        capture?.stop()
-        capture = nil
-        encoder = nil
-        runningConfiguration = nil
-        guard let sender else { return false }
-
-        do {
-            let encoder = try LatestFrameEncoder(
-                width: Int32(configuration.width),
-                height: Int32(configuration.height),
-                sender: sender
-            )
-            let capture = DisplayCapture(
-                displayID: display.displayID,
-                width: configuration.width,
-                height: configuration.height,
-                encoder: encoder
-            )
-            self.encoder = encoder
-            self.capture = capture
-            Task { @MainActor [weak self] in
-                do {
-                    try await capture.start()
-                    guard let self, self.capture === capture else { return }
-                    self.runningConfiguration = configuration
-                    self.lastGoodConfiguration = configuration
-                    // The client threw away everything it had when the session changed, and a
-                    // display that is not moving will not produce a frame on its own.
-                    self.encoder?.requestKeyframe()
-                    Diagnostics.shared.displayLog.info(
-                        "AirMate Display rotated to \(turned)°, now \(configuration.resolutionLabel)"
-                    )
-                    self.refreshUI()
-                } catch {
-                    guard let self, self.capture === capture else { return }
-                    self.lastError = error.localizedDescription
-                    self.tearDownDisplay()
-                    self.refreshUI()
-                }
-            }
-        } catch {
-            lastError = error.localizedDescription
-            tearDownDisplay()
-            refreshUI()
-            return true
-        }
-        refreshUI()
-        return true
     }
 
     private func openPermissionSettings() {
