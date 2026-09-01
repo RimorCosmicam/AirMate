@@ -32,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The encoded count at the previous tick, to notice when nothing is being produced.
     private var lastEncodedSeen: UInt64 = 0
 
+    /// Fetches frames quickly for a moment after a display starts.
+    ///
+    /// A display that has just been rebuilt is empty, and ScreenCaptureKit only emits on change, so
+    /// left alone it sends nothing at all. Once a second is enough to keep a still desktop current;
+    /// it is far too slow to give a client that has just lost its session something to decode.
+    private var priming: Timer?
+    private var primingTicks = 0
+
     /// The configuration a display is actually running at, as opposed to the one last asked for.
     ///
     /// These diverge for as long as a restart takes, and permanently if one fails. Publishing the
@@ -275,6 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     self?.startingDisplay = false
                     self?.runningConfiguration = configuration
                     self?.lastGoodConfiguration = configuration
+                    self?.primeFrames()
                     Diagnostics.shared.displayLog.info("AirMate Display started with ID \(display.displayID)")
                     self?.refreshUI()
                 } catch {
@@ -310,6 +319,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshUI()
     }
 
+    /// Push frames out quickly for a few seconds after the display comes up.
+    private func primeFrames() {
+        priming?.invalidate()
+        primingTicks = 40
+        priming = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pushPrimedFrame() }
+        }
+    }
+
+    private func pushPrimedFrame() {
+        guard primingTicks > 0, let capture else {
+            priming?.invalidate()
+            priming = nil
+            return
+        }
+        primingTicks -= 1
+        // Each one a keyframe: a client that has just lost its session cannot use anything else.
+        encoder?.requestKeyframe()
+        Task { await capture.captureStill() }
+    }
+
     private func tearDownDisplay() {
         startingDisplay = false
         capture?.stop()
@@ -319,6 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender = nil
         display?.stop()
         display = nil
+        priming?.invalidate()
+        priming = nil
         runningConfiguration = nil
         PointerInput.reset()
         Diagnostics.shared.mutate { $0.lastClientHelloNanos = 0 }

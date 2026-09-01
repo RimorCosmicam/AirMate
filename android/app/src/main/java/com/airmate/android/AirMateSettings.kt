@@ -52,6 +52,16 @@ class AirMateSettings(context: Context) {
             .getOrDefault(ScreenAxis.HORIZONTAL)
         set(value) = store.edit().putString(KEY_AXIS, value.name).apply()
 
+    /**
+     * Whether this tablet has already asked the host to match its screen.
+     *
+     * Matching rebuilds the host's display, so it is done once, on the first connection a tablet
+     * ever makes, when there is nothing open on that display to disturb.
+     */
+    var fittedScreen: Boolean
+        get() = store.getBoolean(KEY_FITTED, false)
+        set(value) = store.edit().putBoolean(KEY_FITTED, value).apply()
+
     var leniency: FrameLeniency
         get() = runCatching { FrameLeniency.valueOf(store.getString(KEY_LENIENCY, null) ?: "") }
             .getOrDefault(FrameLeniency.ACTUAL)
@@ -61,5 +71,6 @@ class AirMateSettings(context: Context) {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_AXIS = "axis"
         const val KEY_LENIENCY = "leniency"
+        const val KEY_FITTED = "fittedScreen"
     }
 }

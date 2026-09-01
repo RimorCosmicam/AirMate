@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 troubledSince = 0L
                 syncOverlay()
             }
+            fitScreenOnce()
             sampleRates()
             reportPanelSize()
             settleCurtain(now)
@@ -509,6 +510,23 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private var reportedPanel = 0 to 0
     private var panelReportedAt = 0L
+
+    /**
+     * Ask the host to match this screen, once, on the first connection this tablet ever makes.
+     *
+     * Anything that is not exactly this panel letterboxes, and the native size is the one people
+     * actually want. Matching rebuilds the host's display, so it happens once, remembered
+     * afterwards — on that first connection there is nothing open on the display to disturb.
+     */
+    private fun fitScreenOnce() {
+        if (settings.fittedScreen || !onboarded || !streaming || curtainDrawn) return
+        val panel = panelSize() ?: return
+        val current = status ?: return
+        settings.fittedScreen = true
+        if (panel.first == current.width && panel.second == current.height) return
+        beginDisplayChange("Fitting", panel.first, panel.second)
+        send(ControlMessage.setDisplay(panel.first, panel.second, hiDPI = true))
+    }
 
     /** This screen's own size, in its current orientation, or null before it has been laid out. */
     private fun panelSize(): Pair<Int, Int>? {
