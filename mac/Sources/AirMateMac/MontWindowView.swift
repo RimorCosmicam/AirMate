@@ -151,6 +151,13 @@ struct MontWindowView: View {
             }
         }
         HStack(spacing: 10) {
+            Text("START WITH MAC")
+                .font(.montBlack(11))
+                .foregroundStyle(.white.opacity(MontWhite.dim))
+            MontToggle(isOn: model.launchAtLogin) { model.onLaunchAtLogin($0) }
+        }
+        .padding(.top, 4)
+        HStack(spacing: 10) {
             Text("HIDPI")
                 .font(.montBlack(11))
                 .foregroundStyle(.white.opacity(MontWhite.dim))

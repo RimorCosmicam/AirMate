@@ -93,3 +93,31 @@ jobs:
         with:
           name: airmate-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows/AirMateWindows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        run: dotnet build -c Release
+      # Single file so Mont and the icon travel with it and there is no folder of
+      # loose resources for someone to leave behind.
+      - name: Publish
+        run: >
+          dotnet publish -c Release -r win-x64 --self-contained false
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o dist
+      - name: Check the payload
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/AirMate.exe)) { throw "AirMate.exe missing" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: airmate-windows-x64
+          path: windows/AirMateWindows/dist

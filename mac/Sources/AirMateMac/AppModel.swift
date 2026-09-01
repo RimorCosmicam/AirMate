@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var state: MainViewState = .starting
     @Published var configuration = DisplayConfiguration(width: 1920, height: 1080, hiDPI: true)
     @Published var welcomeCompleted = UserDefaults.standard.bool(forKey: welcomeKey)
+    @Published var launchAtLogin = LoginItem.isEnabled
 
     /// An Android client has asked to drive this Mac and is waiting on a human.
     ///
@@ -42,6 +43,7 @@ final class AppModel: ObservableObject {
     var onSaveAndroidApp: () -> Void = {}
     var onConfigurationChanged: (DisplayConfiguration) -> Void = { _ in }
     var onControlDecision: (Bool) -> Void = { _ in }
+    var onLaunchAtLogin: (Bool) -> Void = { _ in }
     var onClose: () -> Void = {}
 
     private static let welcomeKey = "AirMateWelcomeCompleted"

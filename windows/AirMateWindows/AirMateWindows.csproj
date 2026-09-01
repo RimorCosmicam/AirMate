@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Lets the project restore and compile from macOS and Linux as well as Windows, which is
+         the only way this half of AirMate gets checked before it reaches a Windows machine. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>AirMate</AssemblyName>
+    <RootNamespace>AirMate</RootNamespace>
+    <Version>0.1.1</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Typed interop for Direct3D 11 and Media Foundation. Hand-written COM declarations for the
+         capture and encode path would be several hundred lines no compiler here can check. -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
+    <PackageReference Include="Vortice.MediaFoundation" Version="3.6.2" />
+    <!-- The pairing code, the same shortcut the macOS host offers. -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\AppIcon.png"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <!-- Mont travels inside the executable, not beside it: this publishes as a single file, and a
+         folder of loose resources next to it is a folder someone can leave behind. -->
+    <EmbeddedResource Include="Assets\mont_thin.ttf" LogicalName="mont_thin.ttf" />
+    <EmbeddedResource Include="Assets\mont_black.ttf" LogicalName="mont_black.ttf" />
+  </ItemGroup>
+</Project>

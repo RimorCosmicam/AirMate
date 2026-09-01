@@ -4,8 +4,10 @@
 
 Your tablet, doing something useful.
 
-AirMate turns an Android tablet into a real second display for your Mac — a
-proper monitor macOS can see and arrange, not a mirror of a window.
+AirMate turns an Android tablet into a second display for your computer. On a
+Mac that is a real monitor macOS can see and arrange, not a mirror of a window.
+On Windows it is whichever display you point it at — including one you added
+yourself.
 
 Built for the Galaxy Tab A7 and anything like it.
 
@@ -13,6 +15,7 @@ Built for the Galaxy Tab A7 and anything like it.
 
 - **A real display** — the Mac creates an actual virtual monitor and only
   captures that one, so your own screen is never recorded and never sent.
+- **Or a display you already have** — on Windows, pick which one to send.
 - **Finds itself** — put both on the same Wi‑Fi and they pair on their own.
   There is a QR code on the Mac if you want to skip the search.
 - **Gets out of the way** — the moment the picture arrives the interface parts
@@ -27,17 +30,41 @@ Built for the Galaxy Tab A7 and anything like it.
 Hardware encode on the Mac, hardware decode on the tablet, and nothing in
 between that waits: the picture on screen is always the newest one that arrived.
 
-## Setting the Mac's controls from the tablet
+## Windows brings its own display
 
-The tablet can drive the Mac, but only once you say so. The first time it asks,
-the Mac's window offers to allow it, and until someone presses that nothing the
+There is no way for a Windows program to create a virtual monitor. macOS has a
+private API for it; Windows has none at all — a new display there means an
+**indirect display driver**, which is a signed kernel-adjacent driver package,
+and AirMate does not ship one.
+
+So the Windows app mirrors a display that already exists. If you only have real
+monitors, that is what you get: a copy of one of them, useful for a second view
+but not a second desktop.
+
+**To get a true second display on Windows, install a virtual display driver
+yourself.** Any of the community indirect display drivers will do. Once it is
+installed, Windows treats its display like any other, it appears in AirMate's
+picker alongside your real ones, and sending it gives you exactly what the Mac
+gives you — a desktop Windows can arrange, on the tablet. AirMate needs no
+special support for this and does not care which driver you chose.
+
+The picker only appears when there is more than one display to choose from.
+
+## Setting the host's controls from the tablet
+
+The tablet can drive the host, but only once you say so. The first time it asks,
+the host's window offers to allow it, and until someone presses that nothing the
 tablet sends changes anything.
+
+Resolution and HiDPI apply on macOS, which owns the display it created. Windows
+is mirroring a display it did not create, so it ignores those and says so rather
+than pretending.
 
 ## Building
 
-Everything is built by GitHub Actions — the macOS app and the Android APK, with
-the APK bundled inside the `.app` so the Mac can hand it to you. Push and take
-the artifacts from the run, or start the workflow by hand.
+Everything is built by GitHub Actions — the macOS app, the Windows app and the
+Android APK, with the APK bundled inside the `.app` so the Mac can hand it to
+you. Push and take the artifacts from the run, or start the workflow by hand.
 
 ```
 gh run download <run-id> -R RimorCosmicam/AirMate -n airmate-android-debug
@@ -65,14 +92,16 @@ ad-hoc signed, not notarized.
 
 - `mac/` — Swift menu-bar host, virtual display, ScreenCaptureKit, VideoToolbox,
   UDP sender; SwiftUI window
+- `windows/` — C# tray host, DXGI Desktop Duplication, Media Foundation, the same
+  UDP sender; WinForms window
 - `android/` — Kotlin client, UDP reassembly, `MediaCodec`, `SurfaceView`;
   Compose overlay
 - `protocol/` — the wire format, video and control
 - `docs/` — architecture, security boundaries, test plan
 
-Both clients are drawn in Mont: black at 92%, square corners, and one typeface
-doing the work that borders and shadows used to.
+All three clients are drawn in Mont: black at 92%, square corners, and one
+typeface doing the work that borders and shadows used to.
 
-> Mont is a commercial typeface from Fontfabric and is bundled in both clients.
+> Mont is a commercial typeface from Fontfabric and is bundled in all three clients.
 > Check the licence covers redistribution before publishing a release built from
 > this tree.

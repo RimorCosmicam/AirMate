@@ -51,6 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.onSaveAndroidApp = { [weak self] in self?.saveAndroidApp() }
         model.onConfigurationChanged = { [weak self] in self?.applyConfiguration($0) }
         model.onControlDecision = { [weak self] allow in self?.resolveControlRequest(allow) }
+        model.onLaunchAtLogin = { [weak self] wanted in
+            // Read the state back: a login item the user has denied in System Settings stays
+            // denied, and a switch that lies about that is worse than no switch.
+            self?.model.launchAtLogin = LoginItem.set(wanted)
+        }
         model.onClose = { [weak self] in self?.window?.performClose(nil) }
 
         diagnosticsTimer = Timer.scheduledTimer(
