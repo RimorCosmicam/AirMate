@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var permissionSettingsOpened = false
     private var lastError: String?
 
+    /// The encoded count at the previous tick, to notice when nothing is being produced.
+    private var lastEncodedSeen: UInt64 = 0
+
     /// The configuration a display is actually running at, as opposed to the one last asked for.
     ///
     /// These diverge for as long as a restart takes, and permanently if one fails. Publishing the
@@ -143,6 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             let snapshot = Diagnostics.shared.snapshot()
             if clientIsConnected(snapshot) {
+                // Nothing produced since the last tick means the display is simply not moving.
+                // Ask it for its contents rather than leaving the client on whatever it last had —
+                // which, after a session change, is a picture of a display that no longer exists.
+                if snapshot.encoded == lastEncodedSeen, let capture {
+                    Task { await capture.captureStill() }
+                }
+                lastEncodedSeen = snapshot.encoded
                 model.state = snapshot.encoded == 0
                     ? .connectingVideo
                     : .connected(snapshot: snapshot, configuration: model.configuration)
