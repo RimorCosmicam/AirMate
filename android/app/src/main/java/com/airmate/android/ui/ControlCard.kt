@@ -50,6 +50,7 @@ fun ControlCard(
     leniency: FrameLeniency,
     fps: Int,
     dropPercent: Float,
+    panel: Pair<Int, Int>?,
     onStartStop: (Boolean) -> Unit,
     onResolution: (Int, Int) -> Unit,
     onHiDPI: (Boolean) -> Unit,
@@ -106,12 +107,19 @@ fun ControlCard(
             val oriented = RESOLUTIONS.map { (wide, tall) ->
                 if (axis == ScreenAxis.VERTICAL) tall to wide else wide to tall
             }
-            val options = (oriented + listOfNotNull(running)).distinct()
+            // This tablet's own panel, first. Every other size is some other device's shape, and
+            // anything that is not exactly this one letterboxes — which is the black band down the
+            // sides, and no amount of window handling removes it.
+            val options = buildList {
+                panel?.let { add(it to "Fit tablet") }
+                oriented.forEach { add(it to "${it.first} × ${it.second}") }
+                running?.let { add(it to "${it.first} × ${it.second}") }
+            }.distinctBy { it.first }
             MontChips(
-                options = options.map { "${it.first} × ${it.second}" },
-                selected = options.indexOfFirst { it == running }
+                options = options.map { it.second },
+                selected = options.indexOfFirst { it.first == running }
             ) { index ->
-                onResolution(options[index].first, options[index].second)
+                onResolution(options[index].first.first, options[index].first.second)
             }
 
             Spacer(Modifier.height(8.dp))

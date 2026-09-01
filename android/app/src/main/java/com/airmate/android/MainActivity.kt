@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
+import android.view.WindowManager
 import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.BackEventCompat
@@ -287,6 +288,20 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun enterImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Draw through the bars and through any cutout. Hiding the system bars is not the same as
+        // being allowed to paint where they were, and without this the window stops short of them —
+        // which is the black band along the top and bottom in portrait.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+        }
         WindowInsetsControllerCompat(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())
@@ -406,6 +421,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         leniency = leniency,
                         fps = fps,
                         dropPercent = dropPercent,
+                        panel = panelSize(),
                         onStartStop = { start ->
                             send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
                         },
@@ -517,6 +533,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
 
     private var reportedPanel = 0 to 0
+
+    /** This tablet's own panel, in its current orientation, or null before it has been laid out. */
+    private fun panelSize(): Pair<Int, Int>? {
+        val size = root.width to root.height
+        return if (size.first > 0 && size.second > 0) size else null
+    }
 
     /**
      * Tell the host how big this tablet is, whenever that changes.
