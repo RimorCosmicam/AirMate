@@ -122,3 +122,18 @@ typeface doing the work that borders and shadows used to.
 > Mont is a commercial typeface from Fontfabric and is bundled in all three clients.
 > Check the licence covers redistribution before publishing a release built from
 > this tree.
+
+<img src="androidhost/miniServer.png" width="88" alt="AirMate Host">
+
+## The phone can send it, too
+
+There is an experimental Android host as well. A Galaxy phone builds itself a
+display, One UI puts Samsung DeX on it of its own accord, and that desktop goes
+to AirMate on the tablet — a second screen for a phone, hosted by the phone.
+
+It wants wireless debugging turned on once. Only the shell user may create the
+kind of display DeX will attach to, and pairing on the device is how the app
+becomes one. No root, and nothing installed on a computer.
+
+`androidhost/` — Kotlin app with an ADB client of its own, and a shell-side host
+that makes the display, encodes it, and speaks the same wire format the Mac does.
