@@ -1,0 +1,11 @@
+.gradle/
+build/
+local.properties
+.kotlin/
+*.iml
+.idea/
+
+# Built by server/build.sh, and compiled into the APK besides — never a source artifact.
+server/airmate-server.jar
+server/build/
+*.log
