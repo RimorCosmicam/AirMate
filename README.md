@@ -116,12 +116,13 @@ ad-hoc signed, not notarized.
 - `protocol/` — the wire format, video and control
 - `docs/` — architecture, security boundaries, test plan
 
-All three clients are drawn in Mont: black at 92%, square corners, and one
-typeface doing the work that borders and shadows used to.
+All the clients are drawn in Mont: black at 92%, square corners, and one
+typeface doing the work that borders and shadows used to. That typeface is
+Poppins, set in Thin and Black — the two ends of it, and the distance between
+them is what the language uses instead of rules and boxes.
 
-> Mont is a commercial typeface from Fontfabric and is bundled in all three clients.
-> Check the licence covers redistribution before publishing a release built from
-> this tree.
+> Poppins is under the SIL Open Font License and is bundled in every client, so a
+> release built from this tree may be redistributed as it stands.
 
 <img src="androidhost/miniServer.png" width="88" alt="AirMate Host">
 

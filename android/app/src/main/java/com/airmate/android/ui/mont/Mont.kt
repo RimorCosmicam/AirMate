@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.airmate.android.R
 
 /**
- * Mont, the typeface, across five weights.
+ * Poppins, the typeface, across five weights.
  *
  * Compose picks the nearest supplied weight for anything not listed, so SemiBold has to ship even
  * though the interface rarely names it: without it Medium collapses onto Regular and headings stop
@@ -17,11 +17,11 @@ import com.airmate.android.R
  * lets a plain word act as a button without a box around it.
  */
 val Mont = FontFamily(
-    Font(R.font.mont_thin, FontWeight.Thin),
-    Font(R.font.mont_light, FontWeight.Light),
-    Font(R.font.mont_regular, FontWeight.Normal),
-    Font(R.font.mont_semibold, FontWeight.SemiBold),
-    Font(R.font.mont_black, FontWeight.Black)
+    Font(R.font.poppins_thin, FontWeight.Thin),
+    Font(R.font.poppins_light, FontWeight.Light),
+    Font(R.font.poppins_regular, FontWeight.Normal),
+    Font(R.font.poppins_semibold, FontWeight.SemiBold),
+    Font(R.font.poppins_black, FontWeight.Black)
 )
 
 /**

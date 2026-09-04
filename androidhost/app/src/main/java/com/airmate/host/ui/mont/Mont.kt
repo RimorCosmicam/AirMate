@@ -8,18 +8,18 @@ import androidx.compose.ui.text.font.FontWeight
 import com.airmate.host.R
 
 /**
- * Mont, the typeface, across the weights this app uses.
+ * Poppins, the typeface, across the weights this app uses.
  *
  * Black is not an emphasis weight here — it is the default, which is what lets a plain word act as
  * a button without a box drawn around it. SemiBold ships even though little names it: Compose picks
  * the nearest supplied weight, and without it Medium collapses onto Regular.
  */
 val Mont = FontFamily(
-    Font(R.font.mont_thin, FontWeight.Thin),
-    Font(R.font.mont_light, FontWeight.Light),
-    Font(R.font.mont_regular, FontWeight.Normal),
-    Font(R.font.mont_semibold, FontWeight.SemiBold),
-    Font(R.font.mont_black, FontWeight.Black)
+    Font(R.font.poppins_thin, FontWeight.Thin),
+    Font(R.font.poppins_light, FontWeight.Light),
+    Font(R.font.poppins_regular, FontWeight.Normal),
+    Font(R.font.poppins_semibold, FontWeight.SemiBold),
+    Font(R.font.poppins_black, FontWeight.Black)
 )
 
 /**

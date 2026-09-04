@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace AirMate;
 
-/// <summary>Mont, carried inside the executable.</summary>
+/// <summary>Poppins, carried inside the executable.</summary>
 /// <remarks>
 /// Installed fonts cannot be relied on and a private collection costs nothing, so all three
 /// AirMate clients ship the same files and none is typeset by whatever happens to be on the
@@ -18,7 +18,7 @@ internal static class MontFont
 
     static MontFont()
     {
-        foreach (var name in new[] { "mont_thin.ttf", "mont_black.ttf" })
+        foreach (var name in new[] { "poppins_thin.ttf", "poppins_black.ttf" })
         {
             try
             {
@@ -37,8 +37,8 @@ internal static class MontFont
         }
     }
 
-    public static Font Thin(float size) => Make("Mont Thin", size);
-    public static Font Black(float size) => Make("Mont Black", size);
+    public static Font Thin(float size) => Make("Poppins Thin", size);
+    public static Font Black(float size) => Make("Poppins Black", size);
 
     private static Font Make(string name, float size)
     {

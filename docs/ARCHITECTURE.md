@@ -61,6 +61,6 @@ currently checked and would still fault.
 ## Mont
 
 Both clients are built on the Mont design language (`~/Projects/Mont`): black at 92%, square
-corners, and Mont Black carrying the hierarchy that decoration used to. The macOS window is SwiftUI
+corners, and Poppins Black carrying the hierarchy that decoration used to. The macOS window is SwiftUI
 (`MontKit.swift`), the Android client is Compose (`ui/mont/`), and the two share the surface alpha,
 the stripe geometry, the toggle, and the row grammar so they cannot drift apart.
