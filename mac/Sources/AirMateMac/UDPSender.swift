@@ -22,7 +22,9 @@ final class UDPSender: @unchecked Sendable {
         guard fd >= 0 else { throw POSIXError(.ENOTSOCK) }
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout.size(ofValue: one)))
-        var bufferSize: Int32 = 256 * 1024
+        // Big enough to hold a keyframe and the frames either side of it. At 256 KB the buffer
+        // filled part-way through an ordinary frame, and the rest of that frame was discarded.
+        var bufferSize: Int32 = 1024 * 1024
         setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufferSize, socklen_t(MemoryLayout.size(ofValue: bufferSize)))
         fcntl(fd, F_SETFL, O_NONBLOCK)
         var address = sockaddr_in()
@@ -103,7 +105,7 @@ final class UDPSender: @unchecked Sendable {
         return true
     }
 
-    func sendStatus(running: Bool, hiDPI: Bool, width: Int, height: Int, encodedFrames: UInt64) {
+    func sendStatus(running: Bool, hiDPI: Bool, videoMode: Bool, width: Int, height: Int, encodedFrames: UInt64) {
         let target: (address: sockaddr_in, authorised: Bool)? = lock.withLock {
             guard fd >= 0, hasDestination else { return nil }
             return (destination, true)
@@ -114,11 +116,12 @@ final class UDPSender: @unchecked Sendable {
             running: running,
             hiDPI: hiDPI,
             authorised: target.authorised,
+            videoMode: videoMode,
             width: width,
             height: height,
             encodedFrames: encodedFrames
         )
-        _ = send(packet, to: &address)
+        _ = send(packet, to: &address).count
     }
 
     func send(accessUnit: Data, frameID: UInt64, captureNanos: UInt64, keyframe: Bool, hevc: Bool) {
@@ -128,6 +131,8 @@ final class UDPSender: @unchecked Sendable {
         guard count > 0, count <= Int(UInt16.max) else { return }
         var flags: UInt8 = (keyframe ? 1 : 0) | (hevc ? 4 : 0)
         if keyframe { flags |= 2 }
+        let budget = keyframe ? keyframeBudgetNanos : accessUnitBudgetNanos
+        let deadline = DispatchTime.now().uptimeNanoseconds + budget
         for index in 0..<count {
             let start = index * VideoPacket.maximumPayloadBytes
             let end = min(start + VideoPacket.maximumPayloadBytes, accessUnit.count)
@@ -135,25 +140,80 @@ final class UDPSender: @unchecked Sendable {
                                               captureNanos: captureNanos,
                                               fragmentIndex: UInt16(index), fragmentCount: UInt16(count),
                                               flags: flags, payload: accessUnit[start..<end])
-            if send(packet, to: &target) != packet.count {
+            if !sendWhole(packet, to: &target, deadline: deadline) {
                 Diagnostics.shared.mutate { $0.droppedNetwork += 1 }
                 return
             }
         }
     }
 
-    private func send(_ packet: Data, to target: inout sockaddr_in) -> Int {
+    /**
+     Put one fragment on the wire, waiting for room rather than giving up on the frame.
+
+     A full send buffer is not an error, it is the socket saying the link has not drained yet. The
+     old code read it as a reason to abandon the rest of the access unit, which meant every frame
+     large enough to fill the buffer arrived at the tablet cut off at exactly the point the buffer
+     filled — and a frame missing its tail is not a worse picture, it is none: the client abandons
+     it, and every frame after it refers to a picture the decoder never received. Measured on a
+     Galaxy Tab A7, every single lost frame was a clean truncation and not one was a scattered gap,
+     which is this and nothing to do with the network.
+
+     Waiting also paces us. The encoder holds only the newest frame, so time spent here costs at
+     worst a frame that was about to be replaced anyway.
+     */
+    private func sendWhole(_ packet: Data, to target: inout sockaddr_in, deadline: UInt64) -> Bool {
+        while true {
+            let result = send(packet, to: &target)
+            if result.count == packet.count { return true }
+            guard result.count < 0,
+                  result.error == EAGAIN || result.error == EWOULDBLOCK else { return false }
+            if DispatchTime.now().uptimeNanoseconds >= deadline { return false }
+            // Short enough that a buffer draining at line rate is noticed almost at once, long
+            // enough that this is not a spin.
+            usleep(200)
+        }
+    }
+
+    private func send(_ packet: Data, to target: inout sockaddr_in) -> (count: Int, error: Int32) {
         lock.withLock {
-            guard fd >= 0 else { return -1 }
-            return packet.withUnsafeBytes { bytes in
+            guard fd >= 0 else { return (-1, EBADF) }
+            // Read inside the lock: unlocking is a call of its own and may leave errno as its own.
+            let count = packet.withUnsafeBytes { bytes in
                 withUnsafePointer(to: &target) { pointer in
                     pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                         sendto(fd, bytes.baseAddress, bytes.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                     }
                 }
             }
+            return (count, errno)
         }
     }
+
+    /**
+     How long one access unit may spend waiting for the socket before its tail is given up on.
+
+     This has to be longer than the frame takes to physically leave. At the bitrates AirMate uses a
+     100 KB frame is roughly forty milliseconds of wire time, so a budget of twenty guaranteed a
+     truncation on every frame above about fifty kilobytes — the client saw a stream where almost
+     every loss was a clean cut rather than a scattered gap, which is what that looks like from the
+     far end.
+
+     Reading still keeps it modest: a frame that cannot get out in this long is stale, and the frame
+     behind it is the better picture. Video is far more patient, because there the missing frame is
+     the motion.
+     */
+    var accessUnitBudgetNanos: UInt64 = 120_000_000
+
+    /**
+     What a keyframe gets instead, which is as much as it needs.
+
+     A keyframe is several times the size of the frames around it and is therefore the one most
+     likely to run out of budget — and it is also the frame the client is waiting on to start
+     drawing again after a loss. Truncating it does not cost one picture, it extends the stall until
+     the next one is asked for and sent, which is how a single lost fragment became a second of
+     held picture. It is never worth giving up on.
+     */
+    var keyframeBudgetNanos: UInt64 = 1_000_000_000
 
     func close() {
         let descriptor = lock.withLock {

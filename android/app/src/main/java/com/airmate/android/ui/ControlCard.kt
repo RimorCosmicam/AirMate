@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-import com.airmate.android.FrameLeniency
+import com.airmate.android.StreamMode
 import com.airmate.android.ScreenAxis
 import com.airmate.android.decoder.DecoderLimits
 import com.airmate.android.protocol.StatusMessage
@@ -79,14 +79,17 @@ fun ControlCard(
     edge: CardEdge,
     status: StatusMessage?,
     axis: ScreenAxis,
-    leniency: FrameLeniency,
+    mode: StreamMode,
     fps: Int,
     dropPercent: Float,
     panel: Pair<Int, Int>?,
+    sources: List<String>,
+    selectedSource: Int,
+    onSource: (Int) -> Unit,
     onStartStop: (Boolean) -> Unit,
     onResolution: (Int, Int) -> Unit,
     onAxis: (ScreenAxis) -> Unit,
-    onLeniency: (FrameLeniency) -> Unit,
+    onMode: (StreamMode) -> Unit,
     onRequestKeyframe: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -106,6 +109,19 @@ fun ControlCard(
         )
 
         MontStage(if (edge == CardEdge.LEFT) Alignment.CenterStart else Alignment.CenterEnd) {
+            // Only when there is a choice to make. One host is the ordinary case, and a picker
+            // listing a single thing is a question with one answer — the same rule the Windows
+            // display picker follows.
+            if (sources.size > 1) {
+                MontLabel("SENDING FROM", alpha = MontWhite.DIM, size = 11)
+                MontDetail(
+                    "More than one machine on this network is offering a screen. Only the one " +
+                        "picked here is listened to; the others are not asked to send at all."
+                )
+                MontChips(options = sources, selected = selectedSource, onSelect = onSource)
+                Spacer(Modifier.height(12.dp))
+            }
+
             MontLabel("THIS MAC", alpha = MontWhite.DIM, size = 11)
             MontDetail(
                 when {
@@ -158,12 +174,16 @@ fun ControlCard(
             ) { onAxis(ScreenAxis.entries[it]) }
 
             Spacer(Modifier.height(12.dp))
-            MontLabel("FRAME SKIP", alpha = MontWhite.DIM, size = 11)
-            MontDetail("How long to wait for a late frame before giving up on it. What you pay is latency; what you keep is below.")
+            MontLabel("MODE", alpha = MontWhite.DIM, size = 11)
+            MontDetail(
+                "Reading shows the newest picture and skips whatever it had to skip to get there. " +
+                    "Video keeps every frame it can and lets the picture sit a moment behind. " +
+                    "Both ends change together."
+            )
             MontChips(
-                options = FrameLeniency.entries.map { it.label },
-                selected = leniency.ordinal
-            ) { onLeniency(FrameLeniency.entries[it]) }
+                options = StreamMode.entries.map { it.label },
+                selected = mode.ordinal
+            ) { onMode(StreamMode.entries[it]) }
 
             // The numbers the setting above is meant to move. Without them it is a choice between
             // four words.

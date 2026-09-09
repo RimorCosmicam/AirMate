@@ -1,11 +1,12 @@
+
+*.iml
 .DS_Store
 .build/
 DerivedData/
 android/.gradle/
-android/local.properties
 android/app/build/
-*.iml
-
+android/local.properties
+mac/dist/
 windows/**/bin/
-windows/**/obj/
 windows/**/dist/
+windows/**/obj/

@@ -77,6 +77,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var receiver: UdpVideoReceiver? = null
 
     private var status by mutableStateOf<StatusMessage?>(null)
+
+    /** Every host heard from lately, and the one being listened to. */
+    private var sources by mutableStateOf<List<UdpVideoReceiver.Source>>(emptyList())
+
+    /** Held as state as well as in the receiver, so picking one redraws the row that shows it. */
+    private var listeningTo by mutableStateOf<java.net.InetAddress?>(null)
     private var streaming by mutableStateOf(false)
     private var everStreamed by mutableStateOf(false)
     private var scanning by mutableStateOf(false)
@@ -85,7 +91,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var leaving by mutableStateOf(false)
     private var onboarded by mutableStateOf(false)
     private var axis by mutableStateOf(ScreenAxis.HORIZONTAL)
-    private var leniency by mutableStateOf(FrameLeniency.ACTUAL)
+    private var mode by mutableStateOf(StreamMode.READING)
 
     private var pairingHost: String? = null
     private var pairingPort = 48620
@@ -117,6 +123,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 cardEdge = null
             } else {
                 cardEdge = pendingEdge ?: touchInput.lastTouchedSide ?: CardEdge.LEFT
+                // Once a host is chosen the hello stops going to the whole subnet, so opening the
+                // card is the moment to look again — otherwise a machine switched on later could
+                // never appear in the list.
+                receiver?.rescan()
             }
             pendingEdge = null
             syncOverlay()
@@ -260,6 +270,21 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val attempted = decodedDelta + droppedDelta
         dropPercent = if (attempted > 0) droppedDelta * 100f / attempted else 0f
 
+        // Said out loud once a second, because the two kinds of loss have the same symptom and
+        // opposite cures: fragments that never arrived are the network's, input buffers refused are
+        // the decoder's, and a card showing one percentage cannot tell you which you are looking at.
+        Log.i(
+            TAG,
+            "fps=$fps drop=${dropPercent.roundToInt()}% " +
+                "lost=${receiver?.abandonedFrames ?: 0} busy=${decoder?.droppedFrames ?: 0} " +
+                "hostSkipped=${receiver?.skippedByHost ?: 0} " +
+                "heldForKey=${receiver?.skippedAwaitingKeyframe ?: 0} " +
+                "late=${receiver?.discardedLate ?: 0} " +
+                // Read back off the host rather than off our own setting, so a mode the host never
+                // heard shows as what it is instead of what we asked for.
+                "host=${if (status?.videoMode == true) "video" else "reading"}"
+        )
+
         sampleNanos = now
         sampleDecoded = decoded
         sampleDropped = dropped
@@ -270,7 +295,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         settings = AirMateSettings(this)
         onboarded = settings.onboarded
         axis = settings.axis
-        leniency = settings.leniency
+        mode = settings.mode
         requestedOrientation = axis.requested
 
         enterImmersiveMode()
@@ -425,10 +450,31 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         edge = edge,
                         status = status,
                         axis = axis,
-                        leniency = leniency,
+                        mode = mode,
                         fps = fps,
                         dropPercent = dropPercent,
                         panel = panelSize(),
+                        sources = sources.map { it.label },
+                        selectedSource = sources.indexOfFirst { it.address == listeningTo },
+                        onSource = { index ->
+                            val chosen = sources.getOrNull(index)
+                            if (chosen != null && chosen.address != listeningTo) {
+                                // What is on screen belongs to the host being left behind, and the
+                                // next host's first frames are a different display at a different
+                                // size. The curtain covers the change, as it does for a resize.
+                                val shape = chosen.status?.let { it.width to it.height }
+                                    ?: status?.let { it.width to it.height }
+                                if (shape != null) {
+                                    beginDisplayChange("Switching", shape.first, shape.second)
+                                } else {
+                                    cardEdge = null
+                                    syncOverlay()
+                                }
+                                receiver?.select(chosen.address)
+                                listeningTo = chosen.address
+                                status = null
+                            }
+                        },
                         onStartStop = { start ->
                             send(ControlMessage.simple(if (start) ControlMessage.TYPE_START else ControlMessage.TYPE_STOP))
                         },
@@ -442,7 +488,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                             syncOverlay()
                         },
                         onAxis = ::applyAxis,
-                        onLeniency = ::applyLeniency,
+                        onMode = ::applyMode,
                         onRequestKeyframe = { send(ControlMessage.simple(ControlMessage.TYPE_REQUEST_IDR)) },
                         onDismiss = { cardEdge = null; syncOverlay() }
                     )
@@ -521,10 +567,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
-    private fun applyLeniency(next: FrameLeniency) {
-        leniency = next
-        settings.leniency = next
-        receiver?.leniency = next
+    private fun applyMode(next: StreamMode) {
+        mode = next
+        settings.mode = next
+        receiver?.mode = next
+        send(ControlMessage.setMode(next.wire))
     }
 
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
@@ -579,6 +626,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             ?: DecoderLimits.ceiling()
             ?: (size.first to size.second)
         send(ControlMessage.clientDisplay(size.first, size.second, ceiling.first, ceiling.second))
+        // Repeated with the panel announcement rather than sent once: the host may have restarted,
+        // or be a different host entirely since the last time we said it, and a mode it never heard
+        // is a mode it is not in.
+        send(ControlMessage.setMode(mode.wire))
     }
 
     /**
@@ -674,7 +725,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 surfaceView.setAspect(message.width, message.height)
             }
         }).also { active ->
-            active.leniency = leniency
+            active.mode = mode
+            active.onSources = { listed ->
+                runOnUiThread {
+                    sources = listed
+                    listeningTo = active.selected
+                }
+            }
             pairingHost?.let { active.pairWith(it, pairingPort) }
             active.start()
         }

@@ -58,6 +58,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// The last configuration that actually started, to fall back to when a new one will not.
     private var lastGoodConfiguration: DisplayConfiguration?
 
+    /// Whether the client has asked for every frame rather than the newest one.
+    ///
+    /// Held here rather than in the encoder because both the encoder and the sender are rebuilt
+    /// every time the display is, and a mode that survived only until the next resize would be a
+    /// setting the user had to keep setting.
+    private var videoMode = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         MontFont.register()
         if let icon = Bundle.main.image(forResource: "AppIcon") {
@@ -195,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender?.sendStatus(
             running: live != nil,
             hiDPI: live?.hiDPI ?? model.configuration.hiDPI,
+            videoMode: videoMode,
             width: live?.width ?? model.configuration.width,
             height: live?.height ?? model.configuration.height,
             encodedFrames: Diagnostics.shared.snapshot().encoded
@@ -282,6 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.display = display
             self.encoder = encoder
             self.capture = capture
+            applyMode()
 
             Task { @MainActor [weak self] in
                 do {
@@ -390,6 +399,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             applyConfiguration(DisplayConfiguration(width: width, height: height, hiDPI: false))
         case .requestIDR:
             encoder?.requestKeyframe()
+        case let .setMode(video):
+            videoMode = video
+            applyMode()
+            Diagnostics.shared.displayLog.info("mode: \(video ? "video" : "reading")")
         case let .clientDisplay(width, height, maxWidth, maxHeight):
             model.clientDisplay = (Int(width), Int(height))
             model.clientCeiling = maxWidth > 0 && maxHeight > 0
@@ -402,6 +415,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let displayID = display?.displayID else { return }
             PointerInput.scroll(phase: phase, x: x, y: y, dx: dx, dy: dy, on: displayID)
         }
+    }
+
+    /**
+     Hand the current mode to the two places that act on it.
+
+     Reading throws a frame away rather than fall behind: one frame waiting for the encoder, and a
+     short patience at the socket. Video does the opposite at both — a queue deep enough to ride out
+     a burst, and long enough at the socket that a frame is never sent with its tail missing.
+     */
+    private func applyMode() {
+        encoder?.pendingDepth = videoMode ? 3 : 1
+        sender?.accessUnitBudgetNanos = videoMode ? 400_000_000 : 120_000_000
     }
 
     private func applyConfiguration(_ newConfiguration: DisplayConfiguration) {

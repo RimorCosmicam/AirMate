@@ -21,6 +21,9 @@ enum ControlPacket {
         /// What the client's own panel measures, in its pixels and current orientation.
         case clientDisplay(width: UInt16, height: UInt16, maxWidth: UInt16, maxHeight: UInt16)
 
+        /// Whether the client would rather have every frame late than the newest frame only.
+        case setMode(video: Bool)
+
         /// Whether obeying this would change what the Mac is doing.
         ///
         /// `hello` only names a video destination, which the broadcast hello already does, so it
@@ -78,6 +81,9 @@ enum ControlPacket {
                 maxWidth: buffer.readBE16(headerBytes + 4),
                 maxHeight: buffer.readBE16(headerBytes + 6)
             )
+        case 9:
+            guard payloadLength >= 1 else { return nil }
+            return .setMode(video: buffer[headerBytes] != 0)
         default: return nil
         }
     }
@@ -92,6 +98,7 @@ enum StatusPacket {
         running: Bool,
         hiDPI: Bool,
         authorised: Bool,
+        videoMode: Bool,
         width: Int,
         height: Int,
         encodedFrames: UInt64
@@ -99,7 +106,9 @@ enum StatusPacket {
         var data = Data(capacity: bytes)
         data.appendBE(magic)
         data.append(version)
-        data.append((running ? 1 : 0) | (hiDPI ? 2 : 0) | (authorised ? 4 : 0))
+        // Bit 3 is the mode coming back. A client that asked for video and is not being given it
+        // otherwise has no way to know: the two modes look identical until the link is under strain.
+        data.append((running ? 1 : 0) | (hiDPI ? 2 : 0) | (authorised ? 4 : 0) | (videoMode ? 8 : 0))
         data.appendBE(UInt16(clamping: width))
         data.appendBE(UInt16(clamping: height))
         data.appendBE(UInt16(0))

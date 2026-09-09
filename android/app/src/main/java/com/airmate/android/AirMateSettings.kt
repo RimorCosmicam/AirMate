@@ -16,24 +16,34 @@ enum class ScreenAxis(val label: String, val requested: Int) {
 }
 
 /**
- * How hard the client tries not to drop a frame.
+ * What to do when the picture cannot arrive both whole and on time.
  *
- * `ACTUAL` is what AirMate has always done and is the lowest-latency case: an incomplete access
- * unit is abandoned the moment a newer one appears, and a frame is dropped outright if the decoder
- * has no input buffer free this instant. Every other setting buys tolerance with latency, so the
- * scale only goes upward from here.
+ * The two answers are genuinely opposed and no single number splits the difference, which is why
+ * this is a mode rather than a slider. Reading wants the newest picture and does not care what was
+ * skipped to get there; video wants every frame and would rather be a moment behind than miss one.
+ *
+ * Both ends have to agree. The host decides first — it is the one that throws a frame away when the
+ * encoder is behind or the socket is full — so the mode is sent to it rather than kept here.
  */
-enum class FrameLeniency(
+enum class StreamMode(
     val label: String,
     /** Newer frames an incomplete access unit survives before it is given up on. */
     val slackFrames: Int,
     /** How long to wait for a decoder input buffer before dropping the frame. */
-    val decoderWaitMicros: Long
+    val decoderWaitMicros: Long,
+    /** What the host is told, on the wire. */
+    val wire: Int
 ) {
-    ACTUAL("Default", 0, 0),
-    ONE("+16 ms", 1, 2_000),
-    TWO("+33 ms", 2, 4_000),
-    FOUR("+66 ms", 4, 8_000)
+    /** The newest picture, as soon as it exists. Anything late is already out of date. */
+    READING("Reading", 0, 0, 0),
+
+    /**
+     * Every frame, even a little behind.
+     *
+     * Nothing is dropped for being late, only for being later than the pipeline can hold. Motion
+     * survives; the cost is that the picture sits a frame or two behind the Mac.
+     */
+    VIDEO("Video", 1, 12_000, 1)
 }
 
 /**
@@ -62,15 +72,15 @@ class AirMateSettings(context: Context) {
         get() = store.getBoolean(KEY_FITTED, false)
         set(value) = store.edit().putBoolean(KEY_FITTED, value).apply()
 
-    var leniency: FrameLeniency
-        get() = runCatching { FrameLeniency.valueOf(store.getString(KEY_LENIENCY, null) ?: "") }
-            .getOrDefault(FrameLeniency.ACTUAL)
-        set(value) = store.edit().putString(KEY_LENIENCY, value.name).apply()
+    var mode: StreamMode
+        get() = runCatching { StreamMode.valueOf(store.getString(KEY_MODE, null) ?: "") }
+            .getOrDefault(StreamMode.READING)
+        set(value) = store.edit().putString(KEY_MODE, value.name).apply()
 
     private companion object {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_AXIS = "axis"
-        const val KEY_LENIENCY = "leniency"
+        const val KEY_MODE = "streamMode"
         const val KEY_FITTED = "fittedScreen"
     }
 }

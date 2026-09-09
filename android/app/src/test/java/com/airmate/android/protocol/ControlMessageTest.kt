@@ -66,12 +66,22 @@ class StatusMessageTest {
                 running = true,
                 hiDPI = false,
                 authorised = true,
+                videoMode = false,
                 width = 1280,
                 height = 800,
                 encodedFrames = 42
             ),
             message
         )
+    }
+
+    @Test fun readsTheModeTheHostIsIn() {
+        // Bit 3 is the host saying which way it resolves whole against timely. A client that asked
+        // for video and is not being given it has no other way to find out.
+        val video = StatusMessage.parse(status(0b1101, 1280, 800, 7), StatusMessage.BYTES)
+        assertEquals(true, video?.videoMode)
+        val reading = StatusMessage.parse(status(0b0101, 1280, 800, 7), StatusMessage.BYTES)
+        assertEquals(false, reading?.videoMode)
     }
 
     @Test fun rejectsShortOrForeignDatagrams() {

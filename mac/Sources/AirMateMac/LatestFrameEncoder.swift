@@ -14,7 +14,23 @@ final class LatestFrameEncoder: @unchecked Sendable {
     private let encodeQueue = DispatchQueue(label: "AirMate.Encoder", qos: .userInteractive)
     private var session: VTCompressionSession?
     private var encoding = false
-    private var pending: CapturedFrame?
+    private var pending: [CapturedFrame] = []
+
+    /// How many captured frames may wait for the encoder.
+    ///
+    /// One is latest-frame-wins and is what AirMate has always done: a frame that arrives while
+    /// another is being encoded replaces whatever was waiting, so the encoder always works on the
+    /// newest picture and everything skipped is simply gone. That is right for reading and wrong
+    /// for video, where the skipped frames are the motion.
+    ///
+    /// Depth alone does not add latency. It is only reached when the encoder is genuinely behind,
+    /// and a short queue lets it catch up after a burst instead of throwing the burst away.
+    var pendingDepth: Int {
+        get { stateLock.withLock { depth } }
+        set { stateLock.withLock { depth = max(1, newValue) } }
+    }
+
+    private var depth = 1
     private var forceKeyframe = false
     private let sender: UDPSender
     private let width: Int32
@@ -42,9 +58,15 @@ final class LatestFrameEncoder: @unchecked Sendable {
         var startNow = false
         stateLock.withLock {
             if encoding {
-                if pending != nil { Diagnostics.shared.mutate { $0.droppedPending += 1 } }
-                pending = frame
-                Diagnostics.shared.mutate { $0.pendingFrames = 1 }
+                pending.append(frame)
+                // Oldest first when the queue is full: the newest frame is the one worth having,
+                // and letting the queue grow instead would trade a dropped frame for a delay that
+                // never ends.
+                while pending.count > depth {
+                    pending.removeFirst()
+                    Diagnostics.shared.mutate { $0.droppedPending += 1 }
+                }
+                Diagnostics.shared.mutate { $0.pendingFrames = self.pending.count }
             } else {
                 encoding = true
                 startNow = true
@@ -180,9 +202,8 @@ final class LatestFrameEncoder: @unchecked Sendable {
     private func completeFrame() {
         var next: CapturedFrame?
         stateLock.withLock {
-            next = pending
-            pending = nil
-            Diagnostics.shared.mutate { $0.pendingFrames = 0 }
+            next = pending.isEmpty ? nil : pending.removeFirst()
+            Diagnostics.shared.mutate { $0.pendingFrames = self.pending.count }
             if next == nil { encoding = false }
         }
         if let next { encodeQueue.async { [weak self] in self?.encode(next) } }

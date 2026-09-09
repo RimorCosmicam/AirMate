@@ -51,6 +51,7 @@ Sent by Android so the tablet can drive the Mac's display without the user walki
 | 6 | click | `u16` x, `u16` y |
 | 7 | scroll | `u8` phase (0 begin, 1 continue, 2 end), `u16` x, `u16` y, `i16` dx, `i16` dy |
 | 8 | client display | `u16` width, `u16` height |
+| 9 | set mode | `u8` mode (0 reading, 1 video) |
 
 `client display` is the only message that tells the host anything rather than asking it for
 something: the client's own panel size, in its own pixels and current orientation. The host has no
@@ -66,6 +67,14 @@ between a `begin` and an `end`. The phase exists so the host can move the pointe
 once and put it back once, rather than teleporting it on every delta of a flick.
 
 `set display` carrying the running configuration is a no-op rather than a restart, so a client that repeats its state does not tear the display down.
+
+`set mode` says how the host should resolve whole against timely, and exists because the host is
+where that is decided: it is the end that replaces a frame still waiting for the encoder, and the
+end that gives up on the tail of an access unit when the socket will not take it. In `reading` the
+host keeps one frame waiting and abandons a fragment run it cannot place quickly, because the frame
+behind is better than a late one. In `video` it keeps a short queue and waits far longer at the
+socket, because a frame missing its tail is not a late frame but a lost one, and every frame after
+it is lost with it. A host that does not know the message ignores it and stays as it was.
 
 Clicking and scrolling is the whole input vocabulary — reading mode, not a second pointing device.
 There is no drag, no right click and no modifier, and the host restores the cursor to where it was
@@ -86,7 +95,7 @@ Sent by the Mac to the paired client once per second, and immediately on any sta
 |---:|---:|---|
 | 0 | 4 | magic `AMS1` (`0x414d5331`) |
 | 4 | 1 | protocol version (`1`) |
-| 5 | 1 | flags: bit 0 display running, bit 1 HiDPI, bit 2 sender authorised for control |
+| 5 | 1 | flags: bit 0 display running, bit 1 HiDPI, bit 2 sender authorised for control, bit 3 video mode |
 | 6 | 2 | display width |
 | 8 | 2 | display height |
 | 10 | 2 | reserved (`0`) |

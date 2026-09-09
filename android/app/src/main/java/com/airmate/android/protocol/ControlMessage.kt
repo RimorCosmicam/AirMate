@@ -23,6 +23,7 @@ object ControlMessage {
     const val TYPE_CLICK = 6
     const val TYPE_SCROLL = 7
     const val TYPE_CLIENT_DISPLAY = 8
+    const val TYPE_SET_MODE = 9
 
     const val PHASE_BEGIN = 0
     const val PHASE_CONTINUE = 1
@@ -89,6 +90,15 @@ object ControlMessage {
         return build(TYPE_CLIENT_DISPLAY, payload)
     }
 
+    /**
+     * Which way the host should resolve whole-versus-timely, since it is the end that decides.
+     *
+     * Everything this client can do about a dropped frame happens after the host has already
+     * thrown it away — in the encoder when it is behind, or at the socket when the buffer is full.
+     * Asking politely here is the only way the choice reaches the place it is made.
+     */
+    fun setMode(mode: Int): ByteArray = build(TYPE_SET_MODE, byteArrayOf(mode.toByte()))
+
     private fun build(type: Int, payload: ByteArray): ByteArray =
         ByteBuffer.allocate(HEADER_BYTES + payload.size).order(ByteOrder.BIG_ENDIAN)
             .putInt(MAGIC)
@@ -109,6 +119,8 @@ data class StatusMessage(
     val running: Boolean,
     val hiDPI: Boolean,
     val authorised: Boolean,
+    /** What the host says its own mode is, which is the only proof the request arrived. */
+    val videoMode: Boolean,
     val width: Int,
     val height: Int,
     val encodedFrames: Long
@@ -129,6 +141,7 @@ data class StatusMessage(
                 running = flags and 1 != 0,
                 hiDPI = flags and 2 != 0,
                 authorised = flags and 4 != 0,
+                videoMode = flags and 8 != 0,
                 width = width,
                 height = height,
                 encodedFrames = buffer.long
