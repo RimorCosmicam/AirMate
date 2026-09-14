@@ -62,6 +62,7 @@ final class AppModel: ObservableObject {
     @Published var configuration = DisplayConfiguration(width: 1920, height: 1080, hiDPI: true)
     @Published var welcomeCompleted = UserDefaults.standard.bool(forKey: welcomeKey)
     @Published var launchAtLogin = LoginItem.isEnabled
+    @Published var airDropPaused = AirDropPause.isPaused
 
     /// Whether this Mac will accept taps and scrolls from the tablet.
     ///
@@ -84,6 +85,7 @@ final class AppModel: ObservableObject {
     var onSaveAndroidApp: () -> Void = {}
     var onConfigurationChanged: (DisplayConfiguration) -> Void = { _ in }
     var onLaunchAtLogin: (Bool) -> Void = { _ in }
+    var onPauseAirDrop: (Bool) -> Void = { _ in }
     var onRequestPointerPermission: () -> Void = {}
     var onClose: () -> Void = {}
 

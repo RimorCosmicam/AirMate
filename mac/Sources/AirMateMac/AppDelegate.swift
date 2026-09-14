@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var encoder: LatestFrameEncoder?
     private var sender: UDPSender?
     private var diagnosticsTimer: Timer?
+    /// Whether AirMate is the one that took AWDL down, so quitting only undoes its own change.
+    private var pausedAirDrop = false
     private var wantsDisplayRunning = true
     private var startingDisplay = false
     private var permissionSettingsOpened = false
@@ -91,6 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // denied, and a switch that lies about that is worse than no switch.
             self?.model.launchAtLogin = LoginItem.set(wanted)
         }
+        model.onPauseAirDrop = { [weak self] wanted in
+            guard let self else { return }
+            let paused = AirDropPause.set(paused: wanted)
+            if wanted && paused { self.pausedAirDrop = true }
+            if !paused { self.pausedAirDrop = false }
+            self.model.airDropPaused = paused
+        }
         model.onRequestPointerPermission = { [weak self] in
             PointerInput.requestPermission()
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
@@ -111,6 +120,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // AirDrop should not stay off because AirMate was quit. Only undoes a pause made here.
+        if pausedAirDrop && AirDropPause.isPaused { AirDropPause.set(paused: false) }
+    }
 
     /// A drawn mark rather than an SF Symbol: Mont's own shapes, and it matches the app icon's
     /// screen rather than borrowing a system glyph.
@@ -149,6 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func refreshUI() {
         rebuildMenu()
         model.pointerPermitted = PointerInput.isPermitted
+        // Read back every second: macOS brings AWDL up again on its own when AirDrop is opened.
+        model.airDropPaused = AirDropPause.isPaused
+        if !model.airDropPaused { pausedAirDrop = false }
 
         guard CGPreflightScreenCaptureAccess() else {
             model.state = .permissionRequired(restartReady: permissionSettingsOpened)
@@ -427,6 +444,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func applyMode() {
         encoder?.pendingDepth = videoMode ? 3 : 1
         sender?.accessUnitBudgetNanos = videoMode ? 400_000_000 : 120_000_000
+        // The one that makes video mode a video mode: let quality give way before frame rate does.
+        encoder?.maxFrameQP = videoMode ? 51 : nil
     }
 
     private func applyConfiguration(_ newConfiguration: DisplayConfiguration) {

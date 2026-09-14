@@ -31,6 +31,66 @@ final class LatestFrameEncoder: @unchecked Sendable {
     }
 
     private var depth = 1
+
+    /**
+     The highest quantiser the encoder may reach, or nil for VideoToolbox's own ceiling.
+
+     Measured on a Galaxy Tab A7 with deliberately hard content at 1200 x 720 and 12 Mb/s: at the
+     default ceiling VideoToolbox declined 45 of every 60 frames rather than compress any harder,
+     and doubling the bitrate only doubled the frames it kept. Lifting the ceiling to 51 let it spend
+     fewer bits on each frame instead, and it kept all sixty at the same 12 Mb/s. That is the video
+     trade exactly — a softer picture that moves, not a sharp one that stutters. Reading keeps the
+     ceiling: a page one frame late and sharp is better than a page on time and smeared, and
+     ordinary desktop content never gets near it anyway.
+     */
+    var maxFrameQP: Int? {
+        get { stateLock.withLock { qpCeiling } }
+        set {
+            // Measured, both directions: a live session takes a new ceiling, reports success, and
+            // then keeps whatever ceiling it has already been encoding under. Back to the default,
+            // frames stayed at the lifted size; lifted a second time, it went on declining 45 of 60.
+            // So a change is never applied to the running session. It is recorded, and the next
+            // frame starts a fresh session that has the ceiling before it encodes anything.
+            let changed = stateLock.withLock { () -> Bool in
+                guard qpCeiling != newValue else { return false }
+                qpCeiling = newValue
+                rebuildForCeiling = true
+                return true
+            }
+            if changed {
+                let described = newValue.map { String($0) } ?? "default"
+                Diagnostics.shared.encoderLog.notice("qp ceiling \(described, privacy: .public) on a new session at the next frame")
+            }
+        }
+    }
+
+    private var qpCeiling: Int?
+
+    /// Set when the ceiling has changed, which only a new session will honour.
+    private var rebuildForCeiling = false
+
+    /**
+     Replace the compression session between frames.
+
+     Nothing is in flight when this runs: it happens only at the start of an encode, and the
+     pipeline starts an encode only after the previous frame has come back from VideoToolbox. The
+     new session opens with a keyframe, parameter sets and all, which is what a client expects after
+     anything that resets the stream.
+     */
+    private func rebuildSession() {
+        if let old = session {
+            VTCompressionSessionCompleteFrames(old, untilPresentationTimeStamp: .invalid)
+            VTCompressionSessionInvalidate(old)
+        }
+        session = nil
+        do {
+            try createSession()
+            Diagnostics.shared.encoderLog.notice("qp ceiling: session rebuilt")
+        } catch {
+            Diagnostics.shared.encoderLog.error("session rebuild failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private var forceKeyframe = false
     private let sender: UDPSender
     private let width: Int32
@@ -107,13 +167,32 @@ final class LatestFrameEncoder: @unchecked Sendable {
         let pixels = Double(width) * Double(height)
         let bitrate = Int32(min(40_000_000, max(12_000_000, pixels * 60 * 0.18)))
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrate as CFNumber)
+        // One hard cap, at half again the average over a second — which is what VideoToolbox's own
+        // documentation describes pairing with an average: a soft target, and a hard ceiling over a
+        // short window. There used to be a second call straight after this one that replaced it
+        // with a fixed 1.5 MB a second. That is twelve megabits, set the line after asking for
+        // twenty-two, so the encoder was told to average one number and never exceed a smaller one,
+        // and the scaled-with-resolution bitrate above never took effect at any size where it
+        // would have mattered.
         VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits,
                              value: [Double(bitrate) / 8 * 1.5, 1.0] as CFArray)
-        VTSessionSetProperty(created, key: kVTCompressionPropertyKey_DataRateLimits, value: [1_500_000, 1] as CFArray)
+        // A session made while video mode is on starts with the ceiling lifted, not at the default.
+        if let qp = stateLock.withLock({ qpCeiling }) {
+            let applied = VTSessionSetProperty(created, key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                                               value: qp as CFNumber)
+            Diagnostics.shared.encoderLog.notice("qp ceiling \(qp, privacy: .public) set on new session, status \(applied, privacy: .public)")
+        }
         VTCompressionSessionPrepareToEncodeFrames(created)
     }
 
     private func encode(_ frame: CapturedFrame) {
+        if stateLock.withLock({ () -> Bool in
+            let wanted = rebuildForCeiling
+            rebuildForCeiling = false
+            return wanted
+        }) {
+            rebuildSession()
+        }
         guard let session else { completeFrame(); return }
         let metadata = FrameMetadata(id: frame.id, captureNanos: frame.captureNanos)
         let refcon = Unmanaged.passRetained(metadata).toOpaque()
@@ -171,6 +250,9 @@ final class LatestFrameEncoder: @unchecked Sendable {
             annexB.append(contentsOf: bytes.bindMemory(to: UInt8.self)[offset ..< offset + Int(length)])
             offset += Int(length)
         }
+        // A frame VideoToolbox declined still calls back, with nothing in it. Counting it as encoded
+        // had the host reporting sixty frames a second while three in four never left.
+        guard !annexB.isEmpty else { return }
         sender.send(accessUnit: annexB, frameID: metadata.id, captureNanos: metadata.captureNanos, keyframe: keyframe, hevc: hevc)
         Diagnostics.shared.mutate { $0.encoded += 1 }
     }

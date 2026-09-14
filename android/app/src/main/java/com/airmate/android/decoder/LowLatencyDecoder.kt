@@ -31,7 +31,7 @@ class LowLatencyDecoder(
     private val lock = Any()
     private var codec: MediaCodec? = null
     private var mime: String? = null
-    var decodedFrames = 0L; private set
+    @Volatile var decodedFrames = 0L; private set
     var droppedFrames = 0L; private set
 
     /**
@@ -42,6 +42,9 @@ class LowLatencyDecoder(
      * frames the decoder was only momentarily too busy to take.
      */
     @Volatile var waitMicros: Long = 0
+
+    private var outputThread: Thread? = null
+    @Volatile private var outputRunning = false
 
     /**
      * Throw the codec away so the next access unit builds a fresh one.
@@ -74,7 +77,6 @@ class LowLatencyDecoder(
             if (length > input.capacity()) { active.queueInputBuffer(index, 0, 0, 0, 0); droppedFrames++; return }
             input.clear(); input.put(bytes, 0, length)
             active.queueInputBuffer(index, 0, length, frameId * 1_000_000L / 60L, 0)
-            drain(active)
         } catch (error: Exception) {
             // Once MediaCodec faults it throws for every frame from then on, so leaving it in place
             // ends video for the rest of the session — which is what turning HiDPI off did. Throw it
@@ -105,16 +107,44 @@ class LowLatencyDecoder(
         selected.configure(format, surface, null, 0)
         selected.start()
         codec = selected; mime = wantedMime
+        startOutput(selected)
         Log.i(TAG, "Hardware decoder ${info.name}, lowLatency=${format.containsKey(MediaFormat.KEY_LOW_LATENCY)}")
     }
 
-    private fun drain(active: MediaCodec) {
-        val info = MediaCodec.BufferInfo()
-        while (true) {
-            val index = active.dequeueOutputBuffer(info, 0)
-            if (index < 0) break
-            active.releaseOutputBuffer(index, true)
-            decodedFrames++
+    /**
+     * Put decoded pictures on screen the moment they exist, from a thread of their own.
+     *
+     * Output used to be collected only straight after an input was queued, and only if a picture
+     * happened to be ready at that instant — which for a hardware decoder it rarely is, since
+     * decoding takes a few milliseconds and the call did not wait. So each finished picture sat in
+     * the decoder until the *next* access unit arrived to collect it: its time on screen was set by
+     * network arrival rather than by when it was ready, a pause in arrivals held a finished frame
+     * back for the whole pause, and a decoder vendor-measured at over a hundred frames a second at
+     * this size showed a decode latency longer than a frame. Waiting on output here, apart from
+     * input, lets each picture go out as soon as it is done.
+     */
+    private fun startOutput(active: MediaCodec) {
+        outputRunning = true
+        outputThread = Thread({
+            val info = MediaCodec.BufferInfo()
+            while (outputRunning) {
+                val index = try {
+                    active.dequeueOutputBuffer(info, OUTPUT_WAIT_MICROS)
+                } catch (_: IllegalStateException) {
+                    break
+                }
+                if (index < 0) continue
+                try {
+                    active.releaseOutputBuffer(index, true)
+                } catch (_: IllegalStateException) {
+                    break
+                }
+                decodedFrames++
+            }
+        }, "AirMate-Decoder-Output").apply {
+            priority = Thread.MAX_PRIORITY
+            isDaemon = true
+            start()
         }
     }
 
@@ -123,6 +153,13 @@ class LowLatencyDecoder(
     }
 
     private fun closeLocked() {
+        // The output thread goes before the codec does. Releasing a codec underneath a thread
+        // sitting in dequeueOutputBuffer throws, and the thread wakes within one output wait.
+        outputRunning = false
+        outputThread?.let { thread ->
+            if (thread !== Thread.currentThread()) runCatching { thread.join(OUTPUT_WAIT_MICROS / 1000 * 20) }
+        }
+        outputThread = null
         try { codec?.stop() } catch (_: Exception) {}
         try { codec?.release() } catch (_: Exception) {}
         codec = null
@@ -131,6 +168,9 @@ class LowLatencyDecoder(
 
     companion object {
         private const val TAG = "AirMate.Android.Decoder"
+
+        /** How long the output thread waits for a picture before checking whether to stop. */
+        private const val OUTPUT_WAIT_MICROS = 10_000L
     }
 }
 

@@ -3,6 +3,7 @@ package com.airmate.android
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.net.wifi.WifiManager
 import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
@@ -277,7 +278,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             TAG,
             "fps=$fps drop=${dropPercent.roundToInt()}% " +
                 "lost=${receiver?.abandonedFrames ?: 0} busy=${decoder?.droppedFrames ?: 0} " +
-                "hostSkipped=${receiver?.skippedByHost ?: 0} " +
+                "unseen=${receiver?.framesNeverSeen ?: 0} " +
                 "heldForKey=${receiver?.skippedAwaitingKeyframe ?: 0} " +
                 "late=${receiver?.discardedLate ?: 0} " +
                 // Read back off the host rather than off our own setting, so a mode the host never
@@ -574,6 +575,39 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         send(ControlMessage.setMode(next.wire))
     }
 
+    private var radioLock: WifiManager.WifiLock? = null
+
+    /**
+     * Ask the Wi-Fi radio not to doze while a picture is arriving.
+     *
+     * Left to itself the radio saves power between bursts, and waking up costs the next burst a
+     * noticeable delay. A stream sixty times a second has no gaps long enough to be worth sleeping
+     * through, so all dozing does here is make frames arrive late and in a clump. Low-latency mode
+     * exists for exactly this — games and streaming — and is only granted while the app is in the
+     * foreground with the screen on, which is the only time there is a picture to protect.
+     */
+    @Suppress("DEPRECATION")
+    private fun holdRadioAwake() {
+        if (radioLock?.isHeld == true) return
+        val wifi = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager ?: return
+        val mode = if (Build.VERSION.SDK_INT >= 29) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
+        radioLock = runCatching {
+            wifi.createWifiLock(mode, "AirMate:stream").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.onFailure { Log.w(TAG, "Wi-Fi lock refused", it) }.getOrNull()
+    }
+
+    private fun letRadioSleep() {
+        radioLock?.let { if (it.isHeld) runCatching { it.release() } }
+        radioLock = null
+    }
+
     private fun send(bytes: ByteArray) = receiver?.sendControl(bytes) ?: Unit
 
     private var reportedPanel = 0 to 0
@@ -734,6 +768,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
             pairingHost?.let { active.pairWith(it, pairingPort) }
             active.start()
+            holdRadioAwake()
         }
     }
 
@@ -744,6 +779,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
+        letRadioSleep()
         receiver?.close()
         receiver = null
         decoder?.close()

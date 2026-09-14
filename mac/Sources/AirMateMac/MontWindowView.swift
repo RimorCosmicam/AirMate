@@ -160,6 +160,16 @@ struct MontWindowView: View {
             MontToggle(isOn: model.launchAtLogin) { model.onLaunchAtLogin($0) }
         }
         .padding(.vertical, 8)
+        if AirDropPause.isAvailable {
+            HStack(spacing: 10) {
+                Text("PAUSE AIRDROP")
+                    .font(.montBlack(11))
+                    .foregroundStyle(.white.opacity(MontWhite.dim))
+                MontToggle(isOn: model.airDropPaused) { model.onPauseAirDrop($0) }
+            }
+            .padding(.top, 8)
+            MontDetail("Smoother video. AirDrop, Sidecar and Universal Control stop until you turn this off or quit AirMate. Asks for your password.")
+        }
     }
 
     static func qrCode(_ value: String) -> NSImage? {

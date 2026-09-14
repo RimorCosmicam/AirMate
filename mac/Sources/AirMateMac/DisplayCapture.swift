@@ -36,7 +36,11 @@ final class DisplayCapture: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         let configuration = SCStreamConfiguration()
         configuration.width = width
         configuration.height = height
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        // Zero, not 1/60. The interval is a throttle, and a throttle set exactly at the refresh
+        // period rejects every frame that lands a hair early — so a steady 60 fps source came through
+        // as anything from 45 to 57 depending on timing jitter. Zero is ScreenCaptureKit's
+        // documented way to capture at the display's own refresh, and this display is built at 60.
+        configuration.minimumFrameInterval = .zero
         // ScreenCaptureKit's minimum supported queue depth is three. The
         // downstream encoder remains latest-frame-only, so stale frames still
         // cannot accumulate beyond the capture handoff.

@@ -67,14 +67,16 @@ class UdpVideoReceiver(
     var receivedFrames = 0L; private set
 
     /**
-     * Frames the host numbered but never put on the wire.
+     * Frames numbered by the host of which not a single fragment arrived here.
      *
-     * Frame ids increase by one within a session, so a gap in them is a frame that was dropped
-     * before it left the Mac — replaced in the encoder while an older one was still going out, or
-     * given up on before its first fragment. It is the only loss this end cannot see any other way,
-     * and the only one no amount of patience here can recover.
+     * Frame ids increase by one within a session, so a gap in them is a frame this end never saw.
+     * That can be the host dropping it, but it is just as often a frame small enough to fit in one
+     * or two datagrams losing all of them on the way. From here the two are indistinguishable, and
+     * this counter used to claim the first: it was named for host drops and kept climbing while the
+     * Mac's own diagnostics reported none. The host now counts its own drops; this counts what went
+     * missing, wherever it went.
      */
-    var skippedByHost = 0L; private set
+    var framesNeverSeen = 0L; private set
 
     private var highestFrameId = -1L
 
@@ -175,7 +177,13 @@ class UdpVideoReceiver(
         var lastHelloNanos = 0L
         DatagramSocket(port).use { active ->
             socket = active
-            active.receiveBufferSize = 256 * 1024
+            // Large, because asking for a small one makes it small. The system default here is ten
+            // megabytes and the ceiling thirty-two, and requesting 256 KB did not leave the default in
+            // place — it replaced it with something a twentieth the size, which a single heavy frame
+            // and a moment's delay in reading was enough to overflow. At a dozen megabits a frame is
+            // already a hundred datagrams arriving inside a couple of milliseconds; the buffer is
+            // what holds them while this thread is busy with the one before.
+            active.receiveBufferSize = 8 * 1024 * 1024
             active.soTimeout = 100
             active.broadcast = true
             while (running.get()) {
@@ -236,7 +244,7 @@ class UdpVideoReceiver(
                     }
                     if (header.frameId > highestFrameId) {
                         if (highestFrameId >= 0) {
-                            skippedByHost += header.frameId - highestFrameId - 1
+                            framesNeverSeen += header.frameId - highestFrameId - 1
                         }
                         highestFrameId = header.frameId
                     }
